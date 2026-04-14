@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Select from "react-select";
 import Button from "../ui/Button";
 import Card from "../ui/Card";
@@ -14,6 +14,7 @@ import {
   PlusCircle,
   Sparkles,
   Stethoscope,
+  ShieldCheck,
   TrendingDown,
   TrendingUp,
   Users,
@@ -36,6 +37,8 @@ const DashboardOverview = ({
   onMarkAppointmentCompleted,
   onOpenPatients,
 }) => {
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  const autoCompletingAppointmentIdsRef = useRef(new Set());
   const [appointmentForm, setAppointmentForm] = useState({
     patientId: "",
     patientName: "",
@@ -44,8 +47,25 @@ const DashboardOverview = ({
   });
   const [appointmentValidation, setAppointmentValidation] = useState("");
 
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setNowTick(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  const auditEntries = useMemo(() => {
+    return [...(Array.isArray(activityLog) ? activityLog : [])].sort(
+      (a, b) => new Date(b.timestamp) - new Date(a.timestamp),
+    );
+  }, [activityLog]);
+
   const upcomingAppointments = useMemo(() => {
-    const now = Date.now();
+    const now = nowTick;
+
     return (Array.isArray(appointments) ? appointments : [])
       .map((appointment) => ({
         ...appointment,
@@ -54,10 +74,135 @@ const DashboardOverview = ({
         ).getTime(),
       }))
       .filter((appointment) => !Number.isNaN(appointment.timestamp))
-      .filter((appointment) => appointment.timestamp >= now)
+      .map((appointment) => ({
+        ...appointment,
+        cabinDurationMinutes: getCabinDurationMinutes(appointment.id),
+      }))
+      .map((appointment) => ({
+        ...appointment,
+        cabinEndsAt:
+          appointment.timestamp + appointment.cabinDurationMinutes * 60 * 1000,
+      }))
+      .map((appointment) => {
+        const status = String(appointment.status || "pending").toLowerCase();
+        const isCompleted = status === "completed";
+        const isInCabin =
+          !isCompleted &&
+          now >= appointment.timestamp &&
+          now < appointment.cabinEndsAt;
+        const shouldAutoComplete =
+          !isCompleted && now >= appointment.cabinEndsAt;
+
+        const displayStatus = isCompleted
+          ? "completed"
+          : isInCabin
+            ? "in_cabin"
+            : "pending";
+
+        return {
+          ...appointment,
+          status,
+          displayStatus,
+          minutesUntil: (appointment.timestamp - now) / 60000,
+          cabinMinutesLeft: (appointment.cabinEndsAt - now) / 60000,
+          secondsUntil: (appointment.timestamp - now) / 1000,
+          cabinSecondsLeft: (appointment.cabinEndsAt - now) / 1000,
+          shouldAutoComplete,
+        };
+      })
+      .filter((appointment) => {
+        if (appointment.displayStatus === "completed") {
+          return now - appointment.timestamp <= 60 * 60 * 1000;
+        }
+
+        if (appointment.displayStatus === "in_cabin") {
+          return true;
+        }
+
+        return appointment.timestamp >= now - 30 * 60 * 1000;
+      })
       .sort((a, b) => a.timestamp - b.timestamp)
       .slice(0, 8);
-  }, [appointments]);
+  }, [appointments, nowTick]);
+
+  useEffect(() => {
+    const dueForAutoComplete = upcomingAppointments.filter(
+      (appointment) => appointment.shouldAutoComplete,
+    );
+
+    dueForAutoComplete.forEach((appointment) => {
+      if (
+        autoCompletingAppointmentIdsRef.current.has(appointment.id) ||
+        updatingAppointmentId === appointment.id
+      ) {
+        return;
+      }
+
+      autoCompletingAppointmentIdsRef.current.add(appointment.id);
+
+      Promise.resolve(onMarkAppointmentCompleted(appointment.id)).finally(
+        () => {
+          autoCompletingAppointmentIdsRef.current.delete(appointment.id);
+        },
+      );
+    });
+  }, [upcomingAppointments, onMarkAppointmentCompleted, updatingAppointmentId]);
+
+  const reminderAppointments = useMemo(() => {
+    return upcomingAppointments.filter((appointment) => {
+      return (
+        appointment.displayStatus === "pending" &&
+        appointment.minutesUntil >= 0 &&
+        appointment.minutesUntil <= 30
+      );
+    });
+  }, [upcomingAppointments]);
+
+  const advancedInsights = useMemo(() => {
+    const diagnosisCounts = (
+      Array.isArray(activities) ? activities : []
+    ).reduce((accumulator, activity) => {
+      const diagnosis = String(activity.diagnosis || "")
+        .trim()
+        .toLowerCase();
+      if (!diagnosis) {
+        return accumulator;
+      }
+
+      accumulator.set(diagnosis, (accumulator.get(diagnosis) || 0) + 1);
+      return accumulator;
+    }, new Map());
+
+    const mostCommonEntry = [...diagnosisCounts.entries()].sort(
+      (a, b) => b[1] - a[1],
+    )[0];
+
+    const today = new Date();
+    const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const todayVisits =
+      (Array.isArray(visitsPerDayData) ? visitsPerDayData : []).find(
+        (entry) => entry.day === todayKey,
+      )?.visits || 0;
+
+    const peakDayEntry = [
+      ...(Array.isArray(visitsPerDayData) ? visitsPerDayData : []),
+    ].sort(
+      (a, b) =>
+        (Number(b.visits) || 0) - (Number(a.visits) || 0) ||
+        String(b.day || "").localeCompare(String(a.day || "")),
+    )[0];
+
+    return {
+      mostCommonIllness: mostCommonEntry
+        ? toTitleCase(mostCommonEntry[0])
+        : "No diagnosis data",
+      mostCommonCount: mostCommonEntry ? mostCommonEntry[1] : 0,
+      diagnosisVariety: diagnosisCounts.size,
+      totalVisitsToday: todayVisits,
+      peakDayLabel: peakDayEntry?.dateLabel || "No data",
+      peakDayVisits: Number(peakDayEntry?.visits) || 0,
+    };
+  }, [activities, visitsPerDayData]);
 
   const groupedAppointments = useMemo(() => {
     return upcomingAppointments.reduce((accumulator, appointment) => {
@@ -324,6 +469,63 @@ const DashboardOverview = ({
               to your patients and appointments.
             </p>
           </section>
+
+          <section className="space-y-4">
+            <div className="rounded-2xl border border-white/25 bg-white/35 px-4 py-2 backdrop-blur-sm dark:border-white/10 dark:bg-slate-900/30">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                Advanced Insights
+              </p>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <Card className="p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
+                <div className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200">
+                  <Stethoscope className="h-4.5 w-4.5" />
+                </div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Most Common Illness
+                </p>
+                <p className="mt-1 text-base font-bold text-slate-900 dark:text-white">
+                  {advancedInsights.mostCommonIllness}
+                </p>
+                <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                  {advancedInsights.mostCommonCount} cases •{" "}
+                  {advancedInsights.diagnosisVariety} diagnoses tracked
+                </p>
+              </Card>
+
+              <Card className="p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
+                <div className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200">
+                  <CalendarClock className="h-4.5 w-4.5" />
+                </div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Total Visits Today
+                </p>
+                <p className="mt-1 text-2xl font-extrabold text-amber-700 dark:text-amber-200">
+                  {advancedInsights.totalVisitsToday}
+                </p>
+                <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                  Based on today&apos;s visit timeline
+                </p>
+              </Card>
+
+              <Card className="p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
+                <div className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
+                  <TrendingUp className="h-4.5 w-4.5" />
+                </div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Peak Day
+                </p>
+                <p className="mt-1 text-base font-bold text-slate-900 dark:text-white">
+                  {advancedInsights.peakDayLabel}
+                </p>
+                <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                  {advancedInsights.peakDayVisits} visits on the busiest day
+                </p>
+              </Card>
+            </div>
+          </section>
+
           <section className="space-y-4">
             <div className="rounded-2xl border border-white/25 bg-white/35 px-4 py-2 backdrop-blur-sm dark:border-white/10 dark:bg-slate-900/30">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
@@ -536,12 +738,23 @@ const DashboardOverview = ({
                 <div className="mb-4 border-b border-slate-100 pb-3 dark:border-slate-800">
                   <h3 className="inline-flex items-center gap-2 font-['Sora'] text-xl font-bold text-slate-900 dark:text-white">
                     <CalendarClock className="h-5 w-5 text-brand-600 dark:text-brand-200" />
-                    Your Appointments
+                    Upcoming Appointments
                   </h3>
                   <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">
                     Calendar-style list of the next scheduled visits.
                   </p>
                 </div>
+
+                {reminderAppointments.length > 0 ? (
+                  <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 dark:border-amber-700 dark:bg-amber-900/25 dark:text-amber-200">
+                    <p className="inline-flex items-center gap-1.5">
+                      <AlertTriangle className="h-4 w-4" />
+                      {reminderAppointments.length} appointment
+                      {reminderAppointments.length > 1 ? "s are" : " is"} due
+                      within 30 minutes.
+                    </p>
+                  </div>
+                ) : null}
 
                 {Object.keys(groupedAppointments).length === 0 ? (
                   <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm font-medium text-slate-500 transition-all duration-300 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-300">
@@ -557,45 +770,88 @@ const DashboardOverview = ({
                           </p>
 
                           <div className="space-y-2">
-                            {dayItems.map((appointment) => (
-                              <article
-                                key={appointment.id}
-                                className="rounded-xl border border-slate-200 bg-white px-4 py-3 transition-all duration-300 hover:border-brand-200 dark:border-slate-700 dark:bg-slate-800/80"
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <p className="text-sm font-semibold text-slate-800 dark:text-white">
-                                    {appointment.patientName}
-                                  </p>
-                                  <div className="flex items-center gap-2">
-                                    <AppointmentStatusBadge
-                                      status={appointment.status || "pending"}
-                                    />
-                                    <p className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 dark:text-slate-300">
-                                      <Clock3 className="h-3.5 w-3.5" />
-                                      {formatTimeLabel(appointment.time)}
-                                    </p>
-                                  </div>
-                                </div>
+                            {dayItems.map((appointment) =>
+                              (() => {
+                                const isReminder =
+                                  appointment.displayStatus === "pending" &&
+                                  appointment.minutesUntil >= 0 &&
+                                  appointment.minutesUntil <= 30;
+                                const isInCabin =
+                                  appointment.displayStatus === "in_cabin";
+                                const isCompleted =
+                                  appointment.displayStatus === "completed";
 
-                                {(appointment.status || "pending") ===
-                                  "pending" && (
-                                  <Button
-                                    variant="secondary"
-                                    loading={
-                                      updatingAppointmentId === appointment.id
-                                    }
-                                    onClick={() =>
-                                      onMarkAppointmentCompleted(appointment.id)
-                                    }
-                                    className="mt-3 rounded-full px-3 py-1 text-xs"
+                                return (
+                                  <article
+                                    key={appointment.id}
+                                    className={`rounded-xl border px-4 py-3 transition-all duration-300 hover:border-brand-200 ${
+                                      isInCabin
+                                        ? "border-emerald-300 bg-emerald-50/80 dark:border-emerald-700 dark:bg-emerald-900/20"
+                                        : isReminder
+                                          ? "border-amber-300 bg-amber-50/80 dark:border-amber-700 dark:bg-amber-900/20"
+                                          : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800/80"
+                                    }`}
                                   >
-                                    {updatingAppointmentId === appointment.id
-                                      ? "Updating..."
-                                      : "Mark as Completed"}
-                                  </Button>
-                                )}
-                              </article>
-                            ))}
+                                    <div className="flex items-center justify-between gap-2">
+                                      <p className="text-sm font-semibold text-slate-800 dark:text-white">
+                                        {appointment.patientName}
+                                      </p>
+                                      <div className="flex items-center gap-2">
+                                        <AppointmentStatusBadge
+                                          status={appointment.displayStatus}
+                                        />
+                                        <p className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 dark:text-slate-300">
+                                          <Clock3 className="h-3.5 w-3.5" />
+                                          {formatTimeLabel(appointment.time)}
+                                        </p>
+                                      </div>
+                                    </div>
+
+                                    {isReminder ? (
+                                      <p className="mt-2 inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-800 dark:border-amber-700 dark:bg-amber-900/35 dark:text-amber-200">
+                                        <AlertTriangle className="h-3 w-3" />
+                                        Starts in{" "}
+                                        {formatCountdown(
+                                          appointment.secondsUntil,
+                                        )}
+                                      </p>
+                                    ) : null}
+
+                                    {isInCabin ? (
+                                      <p className="mt-2 inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-emerald-800 dark:border-emerald-700 dark:bg-emerald-900/35 dark:text-emerald-200">
+                                        <Clock3 className="h-3 w-3" />
+                                        In-Cabin •{" "}
+                                        {formatCountdown(
+                                          appointment.cabinSecondsLeft,
+                                        )}{" "}
+                                        left
+                                      </p>
+                                    ) : null}
+
+                                    {!isCompleted && (
+                                      <Button
+                                        variant="secondary"
+                                        loading={
+                                          updatingAppointmentId ===
+                                          appointment.id
+                                        }
+                                        onClick={() =>
+                                          onMarkAppointmentCompleted(
+                                            appointment.id,
+                                          )
+                                        }
+                                        className="mt-3 rounded-full px-3 py-1 text-xs"
+                                      >
+                                        {updatingAppointmentId ===
+                                        appointment.id
+                                          ? "Updating..."
+                                          : "Mark as Completed"}
+                                      </Button>
+                                    )}
+                                  </article>
+                                );
+                              })(),
+                            )}
                           </div>
                         </div>
                       ),
@@ -626,29 +882,31 @@ const DashboardOverview = ({
               </Button>
             </div>
 
-            {activityLog.length === 0 ? (
+            {auditEntries.length === 0 ? (
               <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm font-medium text-slate-500 transition-all duration-300 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-300">
                 No activity recorded yet.
               </p>
             ) : (
               <div className="space-y-3">
-                {activityLog.map((entry, index) => (
+                {auditEntries.map((entry, index) => (
                   <article
-                    key={`${entry.timestamp}-${index}`}
+                    key={entry.id || `${entry.timestamp}-${index}`}
                     className="relative overflow-hidden rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-brand-200 hover:shadow-md dark:border-slate-700 dark:bg-slate-800/80 dark:hover:border-slate-500"
                   >
                     <span className="absolute left-0 top-0 h-full w-1 bg-gradient-to-b from-blue-500 via-indigo-500 to-cyan-400" />
-                    <div className="ml-2 flex items-start justify-between gap-3">
-                      <div className="space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <ActivityLogBadge type={entry.type} />
-                          <p className="text-sm font-semibold text-slate-800 dark:text-white">
-                            {entry.message}
-                          </p>
-                        </div>
-                        <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                          {formatActivityTime(entry.timestamp)}
+                    <div className="ml-2 flex items-start gap-3">
+                      <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-100">
+                        <ActivityLogBadge action={entry.action} />
+                      </div>
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <p className="text-sm font-semibold text-slate-800 dark:text-white">
+                          {entry.message || formatAuditMessage(entry)}
                         </p>
+                        <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                          <span>{entry.user || "Doctor"}</span>
+                          <span>•</span>
+                          <span>{formatActivityTime(entry.timestamp)}</span>
+                        </div>
                       </div>
                     </div>
                   </article>
@@ -755,6 +1013,22 @@ const formatTimeLabel = (rawTime) => {
   });
 };
 
+const getCabinDurationMinutes = (appointmentId) => {
+  const seed = String(appointmentId || "appointment")
+    .split("")
+    .reduce((accumulator, char) => accumulator + char.charCodeAt(0), 0);
+
+  return 5 + (seed % 6);
+};
+
+const formatCountdown = (seconds) => {
+  const clamped = Math.max(0, Math.ceil(Number(seconds) || 0));
+  const minutesPart = Math.floor(clamped / 60);
+  const secondsPart = clamped % 60;
+
+  return `${minutesPart}m ${String(secondsPart).padStart(2, "0")}s`;
+};
+
 const getActivityBadge = (activity, activities) => {
   const diagnosis = String(activity.diagnosis || "").toLowerCase();
   if (/(critical|emergency|severe|acute)/.test(diagnosis)) {
@@ -768,8 +1042,8 @@ const getActivityBadge = (activity, activities) => {
   return "Active";
 };
 
-const ActivityLogBadge = ({ type }) => {
-  const normalizedType = String(type || "info").toLowerCase();
+const ActivityLogBadge = ({ action }) => {
+  const normalizedType = String(action || "info").toLowerCase();
 
   const config = {
     patient_added: {
@@ -777,6 +1051,12 @@ const ActivityLogBadge = ({ type }) => {
       className:
         "border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200",
       icon: Users,
+    },
+    patient_updated: {
+      label: "Update",
+      className:
+        "border-violet-200 bg-violet-100 text-violet-700 dark:border-violet-800 dark:bg-violet-900/30 dark:text-violet-200",
+      icon: Activity,
     },
     appointment_scheduled: {
       label: "Appointment",
@@ -789,6 +1069,18 @@ const ActivityLogBadge = ({ type }) => {
       className:
         "border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200",
       icon: Sparkles,
+    },
+    appointment_completed: {
+      label: "Complete",
+      className:
+        "border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200",
+      icon: Sparkles,
+    },
+    login: {
+      label: "Login",
+      className:
+        "border-sky-200 bg-sky-100 text-sky-700 dark:border-sky-800 dark:bg-sky-900/30 dark:text-sky-200",
+      icon: ShieldCheck,
     },
     info: {
       label: "System",
@@ -809,6 +1101,33 @@ const ActivityLogBadge = ({ type }) => {
       {selected.label}
     </span>
   );
+};
+
+const formatAuditMessage = (entry) => {
+  const action = String(entry?.action || "").toLowerCase();
+  const user = String(entry?.user || "Doctor");
+
+  if (action === "login") {
+    return `${user} logged in`;
+  }
+
+  if (action === "patient_added") {
+    return `${user} added a patient`;
+  }
+
+  if (action === "patient_updated") {
+    return `${user} updated a patient`;
+  }
+
+  if (action === "appointment_scheduled") {
+    return `${user} scheduled an appointment`;
+  }
+
+  if (action === "appointment_completed") {
+    return `${user} completed an appointment`;
+  }
+
+  return entry?.message || "Activity recorded";
 };
 
 const formatActivityTime = (timestamp) => {
@@ -985,18 +1304,22 @@ const getPatientSelectStyles = (theme) => {
 };
 
 const AppointmentStatusBadge = ({ status }) => {
-  const normalizedStatus = status === "completed" ? "completed" : "pending";
+  const normalizedStatus = String(status || "pending").toLowerCase();
 
   const badgeClass =
     normalizedStatus === "completed"
       ? "border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"
-      : "border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200";
+      : normalizedStatus === "in_cabin"
+        ? "border-blue-200 bg-blue-100 text-blue-700 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-200"
+        : "border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200";
+
+  const label = normalizedStatus === "in_cabin" ? "IN-CABIN" : normalizedStatus;
 
   return (
     <span
       className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${badgeClass}`}
     >
-      {normalizedStatus}
+      {label}
     </span>
   );
 };

@@ -40,11 +40,38 @@ const usePatientManagement = () => {
     return true;
   };
 
-  const recordActivity = (type, message) => {
+  const formatAuditUser = (rawName) => {
+    const normalized = String(rawName || "").trim();
+
+    if (!normalized) {
+      return "Dr. John";
+    }
+
+    if (/^dr\.?\s+/i.test(normalized)) {
+      return normalized.replace(/^dr\.?\s+/i, "Dr. ");
+    }
+
+    return `Dr. ${normalized}`;
+  };
+
+  const recordActivity = (action, message, user = doctor?.name || "Doctor") => {
     const timestamp = new Date().toISOString();
+    const resolvedUser = formatAuditUser(user);
 
     setActivityLog((previous) =>
-      [{ type, message, timestamp }, ...previous].slice(0, 30),
+      [
+        {
+          id:
+            typeof crypto !== "undefined" && crypto.randomUUID
+              ? crypto.randomUUID()
+              : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          action,
+          user: resolvedUser,
+          message,
+          timestamp,
+        },
+        ...previous,
+      ].slice(0, 30),
     );
   };
 
@@ -116,7 +143,11 @@ const usePatientManagement = () => {
       setSuccessMessage("");
       const createdPatient = await createPatient(formData);
       setPatients((previousPatients) => [createdPatient, ...previousPatients]);
-      recordActivity("patient_added", `Added patient ${createdPatient.name}`);
+      recordActivity(
+        "patient_added",
+        `${formatAuditUser(doctor?.name)} added patient ${createdPatient.name}`,
+        doctor?.name,
+      );
       return createdPatient;
     } catch (error) {
       if (handleUnauthorized(error)) {
@@ -212,6 +243,11 @@ const usePatientManagement = () => {
 
       setSuccessMessage("Patient updated successfully.");
       setEditingPatientId("");
+      recordActivity(
+        "patient_updated",
+        `${formatAuditUser(doctor?.name)} updated patient ${updatedPatient.name}`,
+        doctor?.name,
+      );
     } catch (error) {
       if (handleUnauthorized(error)) {
         return null;
@@ -281,7 +317,8 @@ const usePatientManagement = () => {
       });
       recordActivity(
         "appointment_scheduled",
-        `Scheduled appointment for ${createdAppointment.patientName}`,
+        `${formatAuditUser(doctor?.name)} scheduled appointment for ${createdAppointment.patientName}`,
+        doctor?.name,
       );
       setSuccessMessage("Appointment scheduled successfully.");
       return createdAppointment;
@@ -313,8 +350,9 @@ const usePatientManagement = () => {
         ),
       );
       recordActivity(
-        "status_updated",
-        `Marked appointment completed for ${updatedAppointment.patientName}`,
+        "appointment_completed",
+        `${formatAuditUser(doctor?.name)} marked appointment completed for ${updatedAppointment.patientName}`,
+        doctor?.name,
       );
       setSuccessMessage("Appointment marked as completed.");
       return updatedAppointment;
@@ -374,6 +412,7 @@ const usePatientManagement = () => {
     handleAddAppointment,
     handleMarkAppointmentCompleted,
     handlePrescriptionSaved,
+    recordActivity,
     clearPatientModals,
   };
 };

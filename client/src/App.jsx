@@ -1,4 +1,11 @@
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import LoginPage from "./components/auth/LoginPage";
 import {
@@ -36,6 +43,7 @@ function App() {
   const [notifications, setNotifications] = useState([]);
   const [toasts, setToasts] = useState([]);
   const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
+  const reminderTrackerRef = useRef(new Set());
   const {
     patients,
     appointments,
@@ -61,6 +69,7 @@ function App() {
     handleAddAppointment,
     handleMarkAppointmentCompleted,
     handlePrescriptionSaved,
+    recordActivity,
     clearPatientModals,
   } = usePatientManagement();
   const {
@@ -200,7 +209,12 @@ function App() {
 
   const handleLogin = async (credentials) => {
     try {
-      await login(credentials);
+      const loggedInDoctor = await login(credentials);
+      recordActivity(
+        "login",
+        `${formatDoctorDisplayName(loggedInDoctor?.name || doctor?.name || "Doctor")} logged in`,
+        loggedInDoctor?.name || doctor?.name || "Doctor",
+      );
       setActiveView("dashboard");
       setSearchQuery("");
       setFocusedCalendarAppointment(null);
@@ -264,7 +278,7 @@ function App() {
 
   const showWarningState = !loadingPatients && patients.length === 0;
 
-  const createNotification = (message) => {
+  const createNotification = useCallback((message) => {
     const id =
       typeof crypto !== "undefined" && crypto.randomUUID
         ? crypto.randomUUID()
@@ -278,7 +292,85 @@ function App() {
     window.setTimeout(() => {
       setToasts((previous) => previous.filter((toast) => toast.id !== id));
     }, 2600);
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      reminderTrackerRef.current.clear();
+      return;
+    }
+
+    const checkAppointmentReminders = () => {
+      const now = Date.now();
+      const activeAppointmentKeys = new Set(
+        (Array.isArray(appointments) ? appointments : []).map(
+          (appointment) =>
+            `${appointment.id}|${appointment.date || ""}|${appointment.time || ""}`,
+        ),
+      );
+
+      (Array.isArray(appointments) ? appointments : []).forEach(
+        (appointment) => {
+          const status = String(appointment.status || "pending").toLowerCase();
+          if (status === "completed" || status === "cancelled") {
+            return;
+          }
+
+          const timestamp = new Date(
+            `${appointment.date}T${appointment.time}`,
+          ).getTime();
+          if (Number.isNaN(timestamp)) {
+            return;
+          }
+
+          const diffMinutes = (timestamp - now) / 60000;
+          if (diffMinutes < 0) {
+            return;
+          }
+
+          const reminderBaseKey = `${appointment.id}|${appointment.date || ""}|${appointment.time || ""}`;
+          const thirtyMinuteKey = `${reminderBaseKey}|30`;
+          const fiveMinuteKey = `${reminderBaseKey}|5`;
+
+          if (
+            diffMinutes <= 30 &&
+            diffMinutes > 5 &&
+            !reminderTrackerRef.current.has(thirtyMinuteKey)
+          ) {
+            createNotification(
+              `Reminder: ${appointment.patientName} appointment in 30 min`,
+            );
+            reminderTrackerRef.current.add(thirtyMinuteKey);
+          }
+
+          if (
+            diffMinutes <= 5 &&
+            !reminderTrackerRef.current.has(fiveMinuteKey)
+          ) {
+            createNotification(
+              `Urgent: ${appointment.patientName} appointment in 5 min`,
+            );
+            reminderTrackerRef.current.add(fiveMinuteKey);
+          }
+        },
+      );
+
+      reminderTrackerRef.current.forEach((key) => {
+        const [id, date, time] = String(key).split("|");
+        const baseKey = `${id}|${date}|${time}`;
+        if (!activeAppointmentKeys.has(baseKey)) {
+          reminderTrackerRef.current.delete(key);
+        }
+      });
+    };
+
+    checkAppointmentReminders();
+    const intervalId = window.setInterval(checkAppointmentReminders, 15000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [appointments, createNotification, isAuthenticated]);
 
   const clearNotifications = () => {
     setNotifications([]);
@@ -553,6 +645,20 @@ function App() {
     </DashboardLayout>
   );
 }
+
+const formatDoctorDisplayName = (rawName) => {
+  const normalized = String(rawName || "").trim();
+
+  if (!normalized) {
+    return "Dr. John";
+  }
+
+  if (/^dr\.?\s+/i.test(normalized)) {
+    return normalized.replace(/^dr\.?\s+/i, "Dr. ");
+  }
+
+  return `Dr. ${normalized}`;
+};
 
 const formatSearchTime = (rawTime) => {
   const parsedDate = new Date(`1970-01-01T${rawTime}`);
