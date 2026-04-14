@@ -1,13 +1,7 @@
-// const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5001";
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL ||
-  "https://patient-management-1-g1i8.onrender.com";
+import { BASE_URL, NETWORK_ERROR_MESSAGE } from "../config/api";
+
 const DOCTOR_STORAGE_KEY = "pm-doctor";
 const AUTH_TOKEN_STORAGE_KEY = "pm-auth-token";
-
-const networkErrorMessage =
-  //   "Cannot connect to backend API. Make sure server is running on http://localhost:5001";
-  "Cannot connect to backend API. Make sure server is running on https://patient-management-1-g1i8.onrender.com";
 
 export class ApiAuthError extends Error {
   constructor(message) {
@@ -84,7 +78,7 @@ export const clearStoredToken = () => {
 
 export const loginDoctor = async (payload) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/login`, {
+    const response = await fetch(`${BASE_URL}/login`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -95,7 +89,7 @@ export const loginDoctor = async (payload) => {
     return handleResponse(response);
   } catch (error) {
     if (error instanceof TypeError) {
-      throw new Error(networkErrorMessage);
+      throw new Error(NETWORK_ERROR_MESSAGE);
     }
     throw error;
   }
@@ -103,13 +97,13 @@ export const loginDoctor = async (payload) => {
 
 export const fetchPatients = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/patients`, {
+    const response = await fetch(`${BASE_URL}/patients`, {
       headers: buildAuthHeaders(),
     });
     return handleResponse(response);
   } catch (error) {
     if (error instanceof TypeError) {
-      throw new Error(networkErrorMessage);
+      throw new Error(NETWORK_ERROR_MESSAGE);
     }
     throw error;
   }
@@ -117,7 +111,7 @@ export const fetchPatients = async () => {
 
 export const createPatient = async (payload) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/patients`, {
+    const response = await fetch(`${BASE_URL}/patients`, {
       method: "POST",
       headers: buildAuthHeaders(true),
       body: JSON.stringify(payload),
@@ -126,7 +120,7 @@ export const createPatient = async (payload) => {
     return handleResponse(response);
   } catch (error) {
     if (error instanceof TypeError) {
-      throw new Error(networkErrorMessage);
+      throw new Error(NETWORK_ERROR_MESSAGE);
     }
     throw error;
   }
@@ -134,7 +128,7 @@ export const createPatient = async (payload) => {
 
 export const deletePatient = async (patientId) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/patients/${patientId}`, {
+    const response = await fetch(`${BASE_URL}/patients/${patientId}`, {
       method: "DELETE",
       headers: buildAuthHeaders(),
     });
@@ -142,7 +136,7 @@ export const deletePatient = async (patientId) => {
     return handleResponse(response);
   } catch (error) {
     if (error instanceof TypeError) {
-      throw new Error(networkErrorMessage);
+      throw new Error(NETWORK_ERROR_MESSAGE);
     }
     throw error;
   }
@@ -150,19 +144,16 @@ export const deletePatient = async (patientId) => {
 
 export const addPatientVisit = async (patientId, payload) => {
   try {
-    const response = await fetch(
-      `${API_BASE_URL}/patients/${patientId}/visit`,
-      {
-        method: "POST",
-        headers: buildAuthHeaders(true),
-        body: JSON.stringify(payload),
-      },
-    );
+    const response = await fetch(`${BASE_URL}/patients/${patientId}/visit`, {
+      method: "POST",
+      headers: buildAuthHeaders(true),
+      body: JSON.stringify(payload),
+    });
 
     return handleResponse(response);
   } catch (error) {
     if (error instanceof TypeError) {
-      throw new Error(networkErrorMessage);
+      throw new Error(NETWORK_ERROR_MESSAGE);
     }
     throw error;
   }
@@ -170,7 +161,7 @@ export const addPatientVisit = async (patientId, payload) => {
 
 export const updatePatient = async (patientId, payload) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/patients/${patientId}`, {
+    const response = await fetch(`${BASE_URL}/patients/${patientId}`, {
       method: "PUT",
       headers: buildAuthHeaders(true),
       body: JSON.stringify(payload),
@@ -179,7 +170,7 @@ export const updatePatient = async (patientId, payload) => {
     return handleResponse(response);
   } catch (error) {
     if (error instanceof TypeError) {
-      throw new Error(networkErrorMessage);
+      throw new Error(NETWORK_ERROR_MESSAGE);
     }
     throw error;
   }
@@ -187,13 +178,13 @@ export const updatePatient = async (patientId, payload) => {
 
 export const fetchAppointments = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/appointments`, {
+    const response = await fetch(`${BASE_URL}/appointments`, {
       headers: buildAuthHeaders(),
     });
     return handleResponse(response);
   } catch (error) {
     if (error instanceof TypeError) {
-      throw new Error(networkErrorMessage);
+      throw new Error(NETWORK_ERROR_MESSAGE);
     }
     throw error;
   }
@@ -201,7 +192,7 @@ export const fetchAppointments = async () => {
 
 export const createAppointment = async (payload) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/appointments`, {
+    const response = await fetch(`${BASE_URL}/appointments`, {
       method: "POST",
       headers: buildAuthHeaders(true),
       body: JSON.stringify(payload),
@@ -210,7 +201,7 @@ export const createAppointment = async (payload) => {
     return handleResponse(response);
   } catch (error) {
     if (error instanceof TypeError) {
-      throw new Error(networkErrorMessage);
+      throw new Error(NETWORK_ERROR_MESSAGE);
     }
     throw error;
   }
@@ -219,7 +210,7 @@ export const createAppointment = async (payload) => {
 export const updateAppointmentStatus = async (appointmentId, status) => {
   try {
     const response = await fetch(
-      `${API_BASE_URL}/appointments/${appointmentId}/status`,
+      `${BASE_URL}/appointments/${appointmentId}/status`,
       {
         method: "PATCH",
         headers: buildAuthHeaders(true),
@@ -230,7 +221,7 @@ export const updateAppointmentStatus = async (appointmentId, status) => {
     return handleResponse(response);
   } catch (error) {
     if (error instanceof TypeError) {
-      throw new Error(networkErrorMessage);
+      throw new Error(NETWORK_ERROR_MESSAGE);
     }
     throw error;
   }
@@ -238,14 +229,14 @@ export const updateAppointmentStatus = async (appointmentId, status) => {
 
 export const fetchAdminDoctors = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/admin/doctors`, {
+    const response = await fetch(`${BASE_URL}/admin/doctors`, {
       headers: buildAuthHeaders(),
     });
 
     return handleResponse(response);
   } catch (error) {
     if (error instanceof TypeError) {
-      throw new Error(networkErrorMessage);
+      throw new Error(NETWORK_ERROR_MESSAGE);
     }
     throw error;
   }
@@ -253,14 +244,14 @@ export const fetchAdminDoctors = async () => {
 
 export const fetchAdminPatients = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/admin/patients`, {
+    const response = await fetch(`${BASE_URL}/admin/patients`, {
       headers: buildAuthHeaders(),
     });
 
     return handleResponse(response);
   } catch (error) {
     if (error instanceof TypeError) {
-      throw new Error(networkErrorMessage);
+      throw new Error(NETWORK_ERROR_MESSAGE);
     }
     throw error;
   }
@@ -268,14 +259,14 @@ export const fetchAdminPatients = async () => {
 
 export const fetchAdminStats = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/admin/stats`, {
+    const response = await fetch(`${BASE_URL}/admin/stats`, {
       headers: buildAuthHeaders(),
     });
 
     return handleResponse(response);
   } catch (error) {
     if (error instanceof TypeError) {
-      throw new Error(networkErrorMessage);
+      throw new Error(NETWORK_ERROR_MESSAGE);
     }
     throw error;
   }
