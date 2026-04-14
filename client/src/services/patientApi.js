@@ -1,7 +1,11 @@
-import { BASE_URL, NETWORK_ERROR_MESSAGE } from "../config/api";
+import BASE_URL from "../config/api";
 
 const DOCTOR_STORAGE_KEY = "pm-doctor";
 const AUTH_TOKEN_STORAGE_KEY = "pm-auth-token";
+const RETRY_DELAY_MS = 5000;
+const MAX_ATTEMPTS = 2;
+const SERVER_WAKING_MESSAGE =
+  "Server is waking up, please wait a few seconds...";
 
 export class ApiAuthError extends Error {
   constructor(message) {
@@ -10,6 +14,18 @@ export class ApiAuthError extends Error {
   }
 }
 
+class RetryableServerError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "RetryableServerError";
+  }
+}
+
+const wait = (durationMs) =>
+  new Promise((resolve) => {
+    window.setTimeout(resolve, durationMs);
+  });
+
 const handleResponse = async (response) => {
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
@@ -17,6 +33,10 @@ const handleResponse = async (response) => {
 
     if (response.status === 401) {
       throw new ApiAuthError(errorMessage);
+    }
+
+    if (response.status >= 500) {
+      throw new RetryableServerError(errorMessage);
     }
 
     throw new Error(errorMessage);
@@ -57,6 +77,45 @@ const buildAuthHeaders = (includeJson = false) => {
   return headers;
 };
 
+const requestJson = async (path, options = {}) => {
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetch(`${BASE_URL}${path}`, options);
+      return await handleResponse(response);
+    } catch (error) {
+      if (error instanceof ApiAuthError) {
+        throw error;
+      }
+
+      const canRetry =
+        attempt < MAX_ATTEMPTS &&
+        (error instanceof TypeError || error instanceof RetryableServerError);
+
+      if (!canRetry) {
+        if (
+          error instanceof TypeError ||
+          error instanceof RetryableServerError
+        ) {
+          throw new Error(SERVER_WAKING_MESSAGE);
+        }
+
+        throw error;
+      }
+
+      lastError = error;
+      await wait(RETRY_DELAY_MS);
+    }
+  }
+
+  if (lastError) {
+    throw new Error(SERVER_WAKING_MESSAGE);
+  }
+
+  throw new Error("Request failed");
+};
+
 export const getStoredDoctor = () => readStoredDoctor();
 export const getStoredToken = () => readStoredToken();
 
@@ -77,197 +136,88 @@ export const clearStoredToken = () => {
 };
 
 export const loginDoctor = async (payload) => {
-  try {
-    const response = await fetch(`${BASE_URL}/login`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
-
-    return handleResponse(response);
-  } catch (error) {
-    if (error instanceof TypeError) {
-      throw new Error(NETWORK_ERROR_MESSAGE);
-    }
-    throw error;
-  }
+  return requestJson("/login", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
 };
 
 export const fetchPatients = async () => {
-  try {
-    const response = await fetch(`${BASE_URL}/patients`, {
-      headers: buildAuthHeaders(),
-    });
-    return handleResponse(response);
-  } catch (error) {
-    if (error instanceof TypeError) {
-      throw new Error(NETWORK_ERROR_MESSAGE);
-    }
-    throw error;
-  }
+  return requestJson("/patients", {
+    headers: buildAuthHeaders(),
+  });
 };
 
 export const createPatient = async (payload) => {
-  try {
-    const response = await fetch(`${BASE_URL}/patients`, {
-      method: "POST",
-      headers: buildAuthHeaders(true),
-      body: JSON.stringify(payload),
-    });
-
-    return handleResponse(response);
-  } catch (error) {
-    if (error instanceof TypeError) {
-      throw new Error(NETWORK_ERROR_MESSAGE);
-    }
-    throw error;
-  }
+  return requestJson("/patients", {
+    method: "POST",
+    headers: buildAuthHeaders(true),
+    body: JSON.stringify(payload),
+  });
 };
 
 export const deletePatient = async (patientId) => {
-  try {
-    const response = await fetch(`${BASE_URL}/patients/${patientId}`, {
-      method: "DELETE",
-      headers: buildAuthHeaders(),
-    });
-
-    return handleResponse(response);
-  } catch (error) {
-    if (error instanceof TypeError) {
-      throw new Error(NETWORK_ERROR_MESSAGE);
-    }
-    throw error;
-  }
+  return requestJson(`/patients/${patientId}`, {
+    method: "DELETE",
+    headers: buildAuthHeaders(),
+  });
 };
 
 export const addPatientVisit = async (patientId, payload) => {
-  try {
-    const response = await fetch(`${BASE_URL}/patients/${patientId}/visit`, {
-      method: "POST",
-      headers: buildAuthHeaders(true),
-      body: JSON.stringify(payload),
-    });
-
-    return handleResponse(response);
-  } catch (error) {
-    if (error instanceof TypeError) {
-      throw new Error(NETWORK_ERROR_MESSAGE);
-    }
-    throw error;
-  }
+  return requestJson(`/patients/${patientId}/visit`, {
+    method: "POST",
+    headers: buildAuthHeaders(true),
+    body: JSON.stringify(payload),
+  });
 };
 
 export const updatePatient = async (patientId, payload) => {
-  try {
-    const response = await fetch(`${BASE_URL}/patients/${patientId}`, {
-      method: "PUT",
-      headers: buildAuthHeaders(true),
-      body: JSON.stringify(payload),
-    });
-
-    return handleResponse(response);
-  } catch (error) {
-    if (error instanceof TypeError) {
-      throw new Error(NETWORK_ERROR_MESSAGE);
-    }
-    throw error;
-  }
+  return requestJson(`/patients/${patientId}`, {
+    method: "PUT",
+    headers: buildAuthHeaders(true),
+    body: JSON.stringify(payload),
+  });
 };
 
 export const fetchAppointments = async () => {
-  try {
-    const response = await fetch(`${BASE_URL}/appointments`, {
-      headers: buildAuthHeaders(),
-    });
-    return handleResponse(response);
-  } catch (error) {
-    if (error instanceof TypeError) {
-      throw new Error(NETWORK_ERROR_MESSAGE);
-    }
-    throw error;
-  }
+  return requestJson("/appointments", {
+    headers: buildAuthHeaders(),
+  });
 };
 
 export const createAppointment = async (payload) => {
-  try {
-    const response = await fetch(`${BASE_URL}/appointments`, {
-      method: "POST",
-      headers: buildAuthHeaders(true),
-      body: JSON.stringify(payload),
-    });
-
-    return handleResponse(response);
-  } catch (error) {
-    if (error instanceof TypeError) {
-      throw new Error(NETWORK_ERROR_MESSAGE);
-    }
-    throw error;
-  }
+  return requestJson("/appointments", {
+    method: "POST",
+    headers: buildAuthHeaders(true),
+    body: JSON.stringify(payload),
+  });
 };
 
 export const updateAppointmentStatus = async (appointmentId, status) => {
-  try {
-    const response = await fetch(
-      `${BASE_URL}/appointments/${appointmentId}/status`,
-      {
-        method: "PATCH",
-        headers: buildAuthHeaders(true),
-        body: JSON.stringify({ status }),
-      },
-    );
-
-    return handleResponse(response);
-  } catch (error) {
-    if (error instanceof TypeError) {
-      throw new Error(NETWORK_ERROR_MESSAGE);
-    }
-    throw error;
-  }
+  return requestJson(`/appointments/${appointmentId}/status`, {
+    method: "PATCH",
+    headers: buildAuthHeaders(true),
+    body: JSON.stringify({ status }),
+  });
 };
 
 export const fetchAdminDoctors = async () => {
-  try {
-    const response = await fetch(`${BASE_URL}/admin/doctors`, {
-      headers: buildAuthHeaders(),
-    });
-
-    return handleResponse(response);
-  } catch (error) {
-    if (error instanceof TypeError) {
-      throw new Error(NETWORK_ERROR_MESSAGE);
-    }
-    throw error;
-  }
+  return requestJson("/admin/doctors", {
+    headers: buildAuthHeaders(),
+  });
 };
 
 export const fetchAdminPatients = async () => {
-  try {
-    const response = await fetch(`${BASE_URL}/admin/patients`, {
-      headers: buildAuthHeaders(),
-    });
-
-    return handleResponse(response);
-  } catch (error) {
-    if (error instanceof TypeError) {
-      throw new Error(NETWORK_ERROR_MESSAGE);
-    }
-    throw error;
-  }
+  return requestJson("/admin/patients", {
+    headers: buildAuthHeaders(),
+  });
 };
 
 export const fetchAdminStats = async () => {
-  try {
-    const response = await fetch(`${BASE_URL}/admin/stats`, {
-      headers: buildAuthHeaders(),
-    });
-
-    return handleResponse(response);
-  } catch (error) {
-    if (error instanceof TypeError) {
-      throw new Error(NETWORK_ERROR_MESSAGE);
-    }
-    throw error;
-  }
+  return requestJson("/admin/stats", {
+    headers: buildAuthHeaders(),
+  });
 };
