@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { jsPDF } from "jspdf";
 import { FileText, Pill, Plus, Trash2 } from "lucide-react";
+import { useAuth } from "../../context/AuthContext";
 import { savePatientPrescription } from "../../services/patientApi";
 import Button from "../ui/Button";
 import Card from "../ui/Card";
@@ -45,6 +46,7 @@ const PrescriptionGenerator = ({
   prescriptions,
   onPrescriptionSaved,
 }) => {
+  const { hasPermission } = useAuth();
   const todayDate = useMemo(() => getLocalDateInputValue(new Date()), []);
   const [showForm, setShowForm] = useState(false);
   const [lines, setLines] = useState([createDefaultLine()]);
@@ -317,17 +319,21 @@ const PrescriptionGenerator = ({
           <FileText className="h-5 w-5 text-brand-600 dark:text-brand-200" />
           Prescription Generator
         </h3>
-        <Button
-          variant="primary"
-          className="inline-flex items-center gap-1.5 px-3 py-2 text-sm"
-          onClick={() => setShowForm((current) => !current)}
-        >
-          <FileText className="h-4 w-4" />
-          Generate Prescription
-        </Button>
+        {hasPermission("generate_prescription") ? (
+          <Button
+            variant="primary"
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm"
+            onClick={() => setShowForm((current) => !current)}
+          >
+            <FileText className="h-4 w-4" />
+            Generate Prescription
+          </Button>
+        ) : null}
       </div>
 
-      {showForm && (
+      {!hasPermission("generate_prescription") ? (
+        <AccessDeniedState />
+      ) : showForm ? (
         <form className="mt-4 space-y-4" onSubmit={generatePrescription}>
           {lines.map((line, index) => (
             <div
@@ -445,7 +451,7 @@ const PrescriptionGenerator = ({
             {savingPrescription ? "Saving Prescription..." : "Generate Preview"}
           </Button>
         </form>
-      )}
+      ) : null}
 
       {generatedPrescription && (
         <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-md dark:border-slate-700 dark:bg-slate-900/70">
@@ -537,3 +543,16 @@ const PrescriptionGenerator = ({
 };
 
 export default PrescriptionGenerator;
+
+const AccessDeniedState = () => {
+  return (
+    <div className="mt-4 rounded-2xl border border-dashed border-rose-300 bg-rose-50 p-6 text-center dark:border-rose-800 dark:bg-rose-950/30">
+      <h4 className="font-['Sora'] text-lg font-bold text-rose-700 dark:text-rose-200">
+        Access Denied
+      </h4>
+      <p className="mt-2 text-sm font-medium text-rose-600 dark:text-rose-300">
+        You do not have permission to generate prescriptions.
+      </p>
+    </div>
+  );
+};

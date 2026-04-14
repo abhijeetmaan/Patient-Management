@@ -5,6 +5,7 @@ import {
   fetchAdminDoctors,
   fetchAdminPatients,
   fetchAdminStats,
+  updateAdminDoctorPermissions,
 } from "../services/patientApi";
 
 const initialStats = {
@@ -20,6 +21,7 @@ const useAdminPanel = (enabled) => {
   const [stats, setStats] = useState(initialStats);
   const [doctors, setDoctors] = useState([]);
   const [allPatients, setAllPatients] = useState([]);
+  const [updatingDoctorId, setUpdatingDoctorId] = useState("");
 
   useEffect(() => {
     if (!enabled) {
@@ -28,6 +30,7 @@ const useAdminPanel = (enabled) => {
       setStats(initialStats);
       setDoctors([]);
       setAllPatients([]);
+      setUpdatingDoctorId("");
       return;
     }
 
@@ -87,6 +90,33 @@ const useAdminPanel = (enabled) => {
     stats,
     doctors,
     allPatients,
+    updatingDoctorId,
+    updateDoctorPermissions: async (doctorId, permissions) => {
+      try {
+        setUpdatingDoctorId(String(doctorId));
+        setErrorMessage("");
+        const updatedDoctor = await updateAdminDoctorPermissions(
+          doctorId,
+          permissions,
+        );
+
+        setDoctors((previousDoctors) =>
+          previousDoctors.map((doctor) =>
+            String(doctor.id) === String(doctorId) ? updatedDoctor : doctor,
+          ),
+        );
+      } catch (error) {
+        if (error instanceof ApiAuthError) {
+          logout();
+          return;
+        }
+
+        setErrorMessage(error.message || "Failed to update permissions.");
+        throw error;
+      } finally {
+        setUpdatingDoctorId("");
+      }
+    },
   };
 };
 

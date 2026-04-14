@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
+import { useAuth } from "../../context/AuthContext";
 import Button from "../ui/Button";
 import Card from "../ui/Card";
 import Input from "../ui/Input";
@@ -25,7 +27,11 @@ const PatientList = ({
   onDelete,
   onViewDetails,
   onEdit,
+  onAddPatient,
+  patientScopeLabel = "Your Patients",
+  showAssignedDoctor = false,
 }) => {
+  const { hasPermission } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [genderFilter, setGenderFilter] = useState("all");
@@ -77,12 +83,30 @@ const PatientList = ({
       );
   }, [normalizedPatients, debouncedSearch, genderFilter, ageFilter, sortOrder]);
 
+  const listMotion = {
+    hidden: {},
+    show: {
+      transition: {
+        staggerChildren: 0.06,
+      },
+    },
+  };
+
+  const itemMotion = {
+    hidden: { opacity: 0, y: 16 },
+    show: {
+      opacity: 1,
+      y: 0,
+      transition: { duration: 0.28, ease: "easeOut" },
+    },
+  };
+
   return (
     <Card className="p-6 transition-all duration-300 md:p-7">
       <div className="mb-6 flex items-center justify-between border-b border-slate-100 pb-4 dark:border-slate-800">
         <h2 className="inline-flex items-center gap-2 font-['Sora'] text-3xl font-bold text-slate-800 dark:text-white">
           <Users className="h-6 w-6 text-brand-600 dark:text-brand-200" />
-          Patients
+          {patientScopeLabel}
         </h2>
         <span className="rounded-full bg-brand-50 px-3 py-1 text-sm font-semibold text-brand-700 transition-all duration-300 dark:bg-brand-900/30 dark:text-brand-100">
           Showing {filteredPatients.length} of {patients.length} patients
@@ -178,34 +202,44 @@ const PatientList = ({
               key={index}
               className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all duration-300 dark:border-slate-700 dark:bg-slate-800/80 md:p-5"
             >
-              <div className="h-6 w-40 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
-              <div className="mt-2 h-3 w-24 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+              <div className="saas-skeleton h-6 w-40 rounded" />
+              <div className="saas-skeleton mt-2 h-3 w-24 rounded" />
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <div className="h-10 animate-pulse rounded-xl bg-slate-200 dark:bg-slate-700" />
-                <div className="h-10 animate-pulse rounded-xl bg-slate-200 dark:bg-slate-700" />
+                <div className="saas-skeleton h-10 rounded-xl" />
+                <div className="saas-skeleton h-10 rounded-xl" />
               </div>
             </article>
           ))}
         </div>
       ) : patients.length === 0 ? (
-        <EmptyPatientsState />
+        <EmptyPatientsState onAddPatient={onAddPatient} />
       ) : filteredPatients.length === 0 ? (
         <p className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm font-medium text-slate-500 transition-all duration-300 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-300">
           🚫 No patients found. Try adjusting filters.
         </p>
       ) : (
-        <div className="space-y-4">
+        <motion.div
+          className="space-y-4"
+          variants={listMotion}
+          initial="hidden"
+          animate="show"
+        >
           {filteredPatients.map((patient) => (
-            <PatientCard
-              key={patient.id}
-              patient={patient}
-              deleting={deletingPatientId === patient.id}
-              onDelete={() => onDelete(patient.id)}
-              onViewDetails={() => onViewDetails(patient.id)}
-              onEdit={() => onEdit(patient.id)}
-            />
+            <motion.div key={patient.id} variants={itemMotion}>
+              <PatientCard
+                patient={patient}
+                deleting={deletingPatientId === patient.id}
+                onDelete={() => onDelete(patient.id)}
+                onViewDetails={() => onViewDetails(patient.id)}
+                onEdit={() => onEdit(patient.id)}
+                canViewPatient
+                canEditPatient={hasPermission("edit_patient")}
+                canDeletePatient={hasPermission("delete_patient")}
+                showAssignedDoctor={showAssignedDoctor}
+              />
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       )}
     </Card>
   );
@@ -217,6 +251,10 @@ const PatientCard = ({
   onDelete,
   onViewDetails,
   onEdit,
+  canViewPatient,
+  canEditPatient,
+  canDeletePatient,
+  showAssignedDoctor,
 }) => {
   const latestVisit = Array.isArray(patient.visits) ? patient.visits[0] : null;
 
@@ -237,40 +275,46 @@ const PatientCard = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            onClick={(event) => {
-              event.stopPropagation();
-              onEdit();
-            }}
-            variant="secondary"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm"
-          >
-            <PenSquare className="h-4 w-4" />
-            Edit
-          </Button>
-          <Button
-            onClick={(event) => {
-              event.stopPropagation();
-              onViewDetails();
-            }}
-            variant="secondary"
-            className="inline-flex items-center gap-1.5 border-brand-200 px-3 py-1.5 text-sm text-brand-700 hover:bg-brand-50 dark:border-brand-700 dark:text-brand-100 dark:hover:bg-brand-900/30"
-          >
-            <ChevronRight className="h-4 w-4" />
-            Open Profile
-          </Button>
-          <Button
-            onClick={(event) => {
-              event.stopPropagation();
-              onDelete();
-            }}
-            disabled={deleting}
-            variant="danger"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <Trash2 className="h-4 w-4" />
-            {deleting ? "Deleting..." : "Delete"}
-          </Button>
+          {canViewPatient ? (
+            <Button
+              onClick={(event) => {
+                event.stopPropagation();
+                onViewDetails();
+              }}
+              variant="secondary"
+              className="inline-flex items-center gap-1.5 border-brand-200 px-3 py-1.5 text-sm text-brand-700 hover:bg-brand-50 dark:border-brand-700 dark:text-brand-100 dark:hover:bg-brand-900/30"
+            >
+              <ChevronRight className="h-4 w-4" />
+              Open Profile
+            </Button>
+          ) : null}
+          {canEditPatient ? (
+            <Button
+              onClick={(event) => {
+                event.stopPropagation();
+                onEdit();
+              }}
+              variant="secondary"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm"
+            >
+              <PenSquare className="h-4 w-4" />
+              Edit
+            </Button>
+          ) : null}
+          {canDeletePatient ? (
+            <Button
+              onClick={(event) => {
+                event.stopPropagation();
+                onDelete();
+              }}
+              disabled={deleting}
+              variant="danger"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Trash2 className="h-4 w-4" />
+              {deleting ? "Deleting..." : "Delete"}
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -286,12 +330,18 @@ const PatientCard = ({
           <span className="font-semibold">Visits:</span>{" "}
           {Array.isArray(patient.visits) ? patient.visits.length : 0}
         </p>
+        {showAssignedDoctor ? (
+          <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 transition-all duration-300 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300">
+            <span className="font-semibold">Assigned to:</span>{" "}
+            {patient.assignedDoctorName || "Unknown Doctor"}
+          </p>
+        ) : null}
       </div>
     </article>
   );
 };
 
-const EmptyPatientsState = () => {
+const EmptyPatientsState = ({ onAddPatient }) => {
   return (
     <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center transition-all duration-300 dark:border-slate-700 dark:bg-slate-800/70">
       <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-900/30 dark:text-brand-200">
@@ -304,6 +354,13 @@ const EmptyPatientsState = () => {
         Start by adding your first patient record to unlock timelines and
         analytics.
       </p>
+      <Button
+        type="button"
+        onClick={onAddPatient}
+        className="mt-5 inline-flex items-center justify-center"
+      >
+        Add Patient
+      </Button>
     </div>
   );
 };

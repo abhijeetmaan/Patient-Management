@@ -17,13 +17,62 @@ import {
 
 const AuthContext = createContext(undefined);
 
+const getPermissionsForRole = (role) => {
+  const normalizedRole = String(role || "").toLowerCase();
+
+  if (normalizedRole === "admin") {
+    return {
+      view_all_patients: true,
+      edit_patient: true,
+      delete_patient: true,
+      generate_prescription: true,
+      create_appointment: true,
+    };
+  }
+
+  if (normalizedRole === "doctor") {
+    return {
+      view_all_patients: false,
+      edit_patient: true,
+      delete_patient: false,
+      generate_prescription: true,
+      create_appointment: true,
+    };
+  }
+
+  return {
+    view_all_patients: false,
+    edit_patient: false,
+    delete_patient: false,
+    generate_prescription: false,
+    create_appointment: false,
+  };
+};
+
+const normalizeDoctor = (doctor) => {
+  if (!doctor) {
+    return null;
+  }
+
+  return {
+    ...doctor,
+    permissions:
+      doctor.permissions && typeof doctor.permissions === "object"
+        ? {
+            ...getPermissionsForRole(doctor.role),
+            ...doctor.permissions,
+          }
+        : getPermissionsForRole(doctor.role),
+  };
+};
+
 const getInitialSession = () => {
   const storedDoctor = getStoredDoctor();
   const storedToken = getStoredToken();
 
   if (storedDoctor?.id && storedToken) {
     return {
-      doctor: storedDoctor,
+      doctor: normalizeDoctor(storedDoctor),
       token: storedToken,
     };
   }
@@ -49,15 +98,16 @@ export const AuthProvider = ({ children }) => {
       setAuthError("");
       const { token: nextToken, doctor: loggedInDoctor } =
         await loginDoctor(credentials);
+      const normalizedDoctor = normalizeDoctor(loggedInDoctor);
 
       setStoredToken(nextToken);
-      setStoredDoctor(loggedInDoctor);
+      setStoredDoctor(normalizedDoctor);
       setSession({
-        doctor: loggedInDoctor,
+        doctor: normalizedDoctor,
         token: nextToken,
       });
 
-      return loggedInDoctor;
+      return normalizedDoctor;
     } catch (error) {
       setAuthError(error.message || "Failed to log in.");
       throw error;
@@ -81,12 +131,29 @@ export const AuthProvider = ({ children }) => {
     () => ({
       doctor,
       token,
+      permissions: doctor?.permissions || getPermissionsForRole(doctor?.role),
       isAuthenticated: Boolean(doctor?.id && token),
       authLoading,
       authError,
       login,
       logout,
       clearAuthError,
+      hasPermission: (permission) => {
+        if (!doctor) {
+          return false;
+        }
+
+        if (String(doctor.role || "").toLowerCase() === "admin") {
+          return true;
+        }
+
+        const permissions =
+          doctor.permissions && typeof doctor.permissions === "object"
+            ? doctor.permissions
+            : getPermissionsForRole(doctor.role);
+
+        return Boolean(permissions[permission]);
+      },
     }),
     [doctor, token, authLoading, authError, login, logout, clearAuthError],
   );

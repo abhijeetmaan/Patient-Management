@@ -21,6 +21,7 @@ import {
   PatientList,
   PatientProfilePage,
 } from "./components/patients";
+import AppLoader from "./components/ui/AppLoader";
 import { useAuth } from "./context/AuthContext";
 import useAdminPanel from "./hooks/useAdminPanel";
 import useBillingPlan from "./hooks/useBillingPlan";
@@ -33,7 +34,14 @@ import {
 } from "./utils/dashboardMetrics";
 
 function App() {
-  const { doctor, isAuthenticated, authLoading, authError, login } = useAuth();
+  const {
+    doctor,
+    isAuthenticated,
+    authLoading,
+    authError,
+    login,
+    hasPermission,
+  } = useAuth();
   const isAdmin = doctor?.role === "admin";
   const [activeView, setActiveView] = useState("dashboard");
   const [theme, setTheme] = useState("light");
@@ -43,6 +51,7 @@ function App() {
   const [notifications, setNotifications] = useState([]);
   const [toasts, setToasts] = useState([]);
   const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
+  const [showEntryLoader, setShowEntryLoader] = useState(true);
   const reminderTrackerRef = useRef(new Set());
   const {
     patients,
@@ -78,6 +87,8 @@ function App() {
     stats: adminStats,
     doctors: adminDoctors,
     allPatients: adminPatients,
+    updatingDoctorId,
+    updateDoctorPermissions,
   } = useAdminPanel(isAdmin && activeView === "admin");
   const {
     plans,
@@ -207,6 +218,12 @@ function App() {
     setActiveView("patients");
   };
 
+  const handleAddPatientCta = () => {
+    handleClosePatientDetails();
+    setActiveView("patients");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const handleLogin = async (credentials) => {
     try {
       const loggedInDoctor = await login(credentials);
@@ -257,26 +274,20 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setShowEntryLoader(false);
+    }, 1400);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, []);
+
+  useEffect(() => {
     const isDark = theme === "dark";
     document.documentElement.classList.toggle("dark", isDark);
     localStorage.setItem("pm-theme", theme);
   }, [theme]);
-
-  const toggleTheme = () => {
-    setTheme((currentTheme) => (currentTheme === "light" ? "dark" : "light"));
-  };
-
-  if (!isAuthenticated) {
-    return (
-      <LoginPage
-        loading={authLoading}
-        errorMessage={authError}
-        onLogin={handleLogin}
-      />
-    );
-  }
-
-  const showWarningState = !loadingPatients && patients.length === 0;
 
   const createNotification = useCallback((message) => {
     const id =
@@ -372,6 +383,26 @@ function App() {
     };
   }, [appointments, createNotification, isAuthenticated]);
 
+  const toggleTheme = () => {
+    setTheme((currentTheme) => (currentTheme === "light" ? "dark" : "light"));
+  };
+
+  if (showEntryLoader) {
+    return <AppLoader />;
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <LoginPage
+        loading={authLoading}
+        errorMessage={authError}
+        onLogin={handleLogin}
+      />
+    );
+  }
+
+  const showWarningState = !loadingPatients && patients.length === 0;
+
   const clearNotifications = () => {
     setNotifications([]);
   };
@@ -449,6 +480,8 @@ function App() {
           stats={adminStats}
           doctors={adminDoctors}
           allPatients={adminPatients}
+          updatingDoctorId={updatingDoctorId}
+          onUpdateDoctorPermissions={updateDoctorPermissions}
         />
       );
     }
@@ -489,6 +522,7 @@ function App() {
             handleMarkAppointmentCompletedWithNotification
           }
           onOpenPatients={() => changeActiveView("patients")}
+          onAddPatient={handleAddPatientCta}
         />
       );
     }
@@ -504,6 +538,7 @@ function App() {
           onMarkAppointmentCompleted={
             handleMarkAppointmentCompletedWithNotification
           }
+          onAddPatient={handleAddPatientCta}
         />
       );
     }
@@ -532,6 +567,13 @@ function App() {
           onDelete={handleDeletePatient}
           onViewDetails={openPatientProfile}
           onEdit={handleOpenEditPatient}
+          onAddPatient={handleAddPatientCta}
+          patientScopeLabel={
+            isAdmin || hasPermission("view_all_patients")
+              ? "All Patients"
+              : "Your Patients"
+          }
+          showAssignedDoctor={isAdmin || hasPermission("view_all_patients")}
         />
       </section>
     );
@@ -569,10 +611,10 @@ function App() {
       <AnimatePresence mode="wait">
         <motion.div
           key={activeView}
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -14 }}
-          transition={{ duration: 0.3, ease: "easeOut" }}
+          initial={{ opacity: 0, y: 22, filter: "blur(4px)" }}
+          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+          exit={{ opacity: 0, y: -14, filter: "blur(3px)" }}
+          transition={{ duration: 0.36, ease: [0.22, 1, 0.36, 1] }}
           className="transition-all duration-300"
         >
           {renderActiveView()}

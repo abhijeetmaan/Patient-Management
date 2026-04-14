@@ -25,6 +25,7 @@ const CalendarView = ({
   focusedCalendarAppointment,
   theme,
   onMarkAppointmentCompleted,
+  onAddPatient,
 }) => {
   const [selectedEvent, setSelectedEvent] = useState(null);
 
@@ -45,6 +46,7 @@ const CalendarView = ({
           end,
           status: appointment.status || "pending",
           patientName: appointment.patientName,
+          doctorName: appointment.doctorName,
           patientId: appointment.patientId,
           date: appointment.date,
           time: appointment.time,
@@ -82,6 +84,26 @@ const CalendarView = ({
 
         {loading ? (
           <div className="h-[420px] animate-pulse rounded-2xl bg-slate-200/80 dark:bg-slate-800 sm:h-[500px] lg:h-[560px]" />
+        ) : events.length === 0 ? (
+          <div className="flex h-[420px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 text-center sm:h-[500px] lg:h-[560px] dark:border-slate-700 dark:bg-slate-800/70">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-900/30 dark:text-brand-200">
+              <CalendarDays className="h-8 w-8" />
+            </div>
+            <p className="font-['Sora'] text-xl font-bold text-slate-800 dark:text-white">
+              No appointments scheduled
+            </p>
+            <p className="mt-2 max-w-sm text-sm font-medium text-slate-500 dark:text-slate-300">
+              Add your first patient and start scheduling appointments to fill
+              this calendar.
+            </p>
+            <Button
+              type="button"
+              onClick={onAddPatient}
+              className="mt-5 inline-flex items-center justify-center"
+            >
+              Add Patient
+            </Button>
+          </div>
         ) : (
           <div
             className={`calendar-shell h-[420px] sm:h-[500px] lg:h-[560px] ${theme === "dark" ? "calendar-dark" : ""}`}
@@ -115,6 +137,11 @@ const CalendarView = ({
               icon={UserRound}
               label="Patient"
               value={selectedEvent.patientName}
+            />
+            <DetailTile
+              icon={UserRound}
+              label="Doctor"
+              value={selectedEvent.doctorName || "Unknown Doctor"}
             />
             <DetailTile
               icon={CalendarDays}

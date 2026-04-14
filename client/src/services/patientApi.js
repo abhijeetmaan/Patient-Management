@@ -218,6 +218,14 @@ export const fetchAdminDoctors = async () => {
   });
 };
 
+export const updateAdminDoctorPermissions = async (doctorId, permissions) => {
+  return requestJson(`/admin/doctors/${doctorId}/permissions`, {
+    method: "PATCH",
+    headers: buildAuthHeaders(true),
+    body: JSON.stringify({ permissions }),
+  });
+};
+
 export const fetchAdminPatients = async () => {
   return requestJson("/admin/patients", {
     headers: buildAuthHeaders(),

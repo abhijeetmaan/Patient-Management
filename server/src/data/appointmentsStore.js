@@ -72,6 +72,16 @@ const deleteAppointmentsByPatientIdAndDoctorId = (patientId, doctorId) => {
   return deletedCount > 0;
 };
 
+const deleteAppointmentsByPatientId = (patientId) => {
+  const remainingAppointments = appointments.filter(
+    (appointment) => appointment.patientId !== patientId,
+  );
+
+  const deletedCount = appointments.length - remainingAppointments.length;
+  appointments.splice(0, appointments.length, ...remainingAppointments);
+  return deletedCount > 0;
+};
+
 module.exports = {
   getAppointments,
   getAppointmentsByDoctorId,
@@ -80,4 +90,5 @@ module.exports = {
   updateAppointmentById,
   updateAppointmentByIdAndDoctorId,
   deleteAppointmentsByPatientIdAndDoctorId,
+  deleteAppointmentsByPatientId,
 };

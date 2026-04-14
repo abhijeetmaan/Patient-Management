@@ -1,4 +1,8 @@
-const { getDoctors, sanitizeDoctor } = require("../data/doctorsStore");
+const {
+  getDoctors,
+  sanitizeDoctor,
+  updateDoctorPermissions,
+} = require("../data/doctorsStore");
 const { getPatients } = require("../data/patientsStore");
 const { getAppointments } = require("../data/appointmentsStore");
 
@@ -19,8 +23,22 @@ const getAdminStats = (_req, res) => {
   });
 };
 
+const updateDoctorPermissionsById = (req, res) => {
+  const updatedDoctor = updateDoctorPermissions(
+    req.params.id,
+    req.body.permissions,
+  );
+
+  if (!updatedDoctor) {
+    return res.status(404).json({ message: "Doctor not found." });
+  }
+
+  return res.status(200).json(sanitizeDoctor(updatedDoctor));
+};
+
 module.exports = {
   listAllDoctors,
   listAllPatients,
   getAdminStats,
+  updateDoctorPermissionsById,
 };

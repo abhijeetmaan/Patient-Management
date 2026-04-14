@@ -1,10 +1,12 @@
 const { randomUUID } = require("crypto");
 const {
   addAppointment,
+  getAppointments,
   getAppointmentsByDoctorId,
-  getAppointmentByIdAndDoctorId,
+  updateAppointmentById,
   updateAppointmentByIdAndDoctorId,
 } = require("../data/appointmentsStore");
+const { getDoctorById } = require("../data/doctorsStore");
 const { getPatientByIdAndDoctorId } = require("../data/patientsStore");
 const {
   validateCreateAppointmentPayload,
@@ -42,14 +44,26 @@ const createAppointment = (req, res) => {
   return res.status(201).json(addAppointment(appointment));
 };
 
-const listAppointments = (_req, res) => {
-  const sortedAppointments = [...getAppointmentsByDoctorId(_req.doctorId)].sort(
-    (a, b) => {
+const listAppointments = (req, res) => {
+  const isAdmin = String(req.user?.role || "").toLowerCase() === "admin";
+
+  const sourceAppointments = isAdmin
+    ? getAppointments()
+    : getAppointmentsByDoctorId(req.doctorId);
+
+  const sortedAppointments = [...sourceAppointments]
+    .map((appointment) => {
+      const assignedDoctor = getDoctorById(appointment.doctorId);
+      return {
+        ...appointment,
+        doctorName: assignedDoctor?.name || "Unknown Doctor",
+      };
+    })
+    .sort((a, b) => {
       const aDate = new Date(`${a.date}T${a.time}`).getTime();
       const bDate = new Date(`${b.date}T${b.time}`).getTime();
       return aDate - bDate;
-    },
-  );
+    });
 
   return res.status(200).json(sortedAppointments);
 };
@@ -61,14 +75,21 @@ const updateAppointmentStatus = (req, res) => {
   }
 
   const status = String(req.body.status).trim();
-  const updatedAppointment = updateAppointmentByIdAndDoctorId(
-    req.params.id,
-    req.doctorId,
-    (current) => ({
-      ...current,
-      status,
-    }),
-  );
+  const isAdmin = String(req.user?.role || "").toLowerCase() === "admin";
+
+  const updatedAppointment = isAdmin
+    ? updateAppointmentById(req.params.id, (current) => ({
+        ...current,
+        status,
+      }))
+    : updateAppointmentByIdAndDoctorId(
+        req.params.id,
+        req.doctorId,
+        (current) => ({
+          ...current,
+          status,
+        }),
+      );
 
   if (!updatedAppointment) {
     return res.status(404).json({ message: "Appointment not found" });

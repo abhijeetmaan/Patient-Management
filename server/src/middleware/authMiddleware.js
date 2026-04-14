@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 const { JWT_SECRET } = require("../config/authConfig");
 const { getDoctorById, sanitizeDoctor } = require("../data/doctorsStore");
+const { normalizePermissions } = require("../utils/permissions");
 
 const authMiddleware = (req, res, next) => {
   const authorizationHeader = String(req.header("authorization") || "");
@@ -30,6 +31,7 @@ const authMiddleware = (req, res, next) => {
       email: doctor.email,
       role: doctor.role,
       name: doctor.name,
+      permissions: normalizePermissions(doctor.permissions, doctor.role),
     };
     return next();
   } catch (error) {

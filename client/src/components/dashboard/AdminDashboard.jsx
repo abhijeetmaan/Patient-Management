@@ -7,6 +7,8 @@ const AdminDashboard = ({
   stats,
   doctors,
   allPatients,
+  updatingDoctorId,
+  onUpdateDoctorPermissions,
 }) => {
   const statCards = [
     {
@@ -101,6 +103,18 @@ const AdminDashboard = ({
                   <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                     Role
                   </th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                    Access
+                  </th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                    View All Patients
+                  </th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                    Edit
+                  </th>
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                    Delete
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -120,6 +134,57 @@ const AdminDashboard = ({
                         {doctor.role || "doctor"}
                       </span>
                     </td>
+                    <td className="px-5 py-3.5 text-sm">
+                      <AccessBadge permissions={doctor.permissions} />
+                    </td>
+                    <td className="px-5 py-3.5 text-sm">
+                      <PermissionToggle
+                        checked={Boolean(doctor.permissions?.view_all_patients)}
+                        disabled={
+                          doctor.role === "admin" ||
+                          loading ||
+                          String(updatingDoctorId) === String(doctor.id)
+                        }
+                        onChange={(nextValue) =>
+                          onUpdateDoctorPermissions?.(doctor.id, {
+                            ...doctor.permissions,
+                            view_all_patients: nextValue,
+                          })
+                        }
+                      />
+                    </td>
+                    <td className="px-5 py-3.5 text-sm">
+                      <PermissionToggle
+                        checked={Boolean(doctor.permissions?.edit_patient)}
+                        disabled={
+                          doctor.role === "admin" ||
+                          loading ||
+                          String(updatingDoctorId) === String(doctor.id)
+                        }
+                        onChange={(nextValue) =>
+                          onUpdateDoctorPermissions?.(doctor.id, {
+                            ...doctor.permissions,
+                            edit_patient: nextValue,
+                          })
+                        }
+                      />
+                    </td>
+                    <td className="px-5 py-3.5 text-sm">
+                      <PermissionToggle
+                        checked={Boolean(doctor.permissions?.delete_patient)}
+                        disabled={
+                          doctor.role === "admin" ||
+                          loading ||
+                          String(updatingDoctorId) === String(doctor.id)
+                        }
+                        onChange={(nextValue) =>
+                          onUpdateDoctorPermissions?.(doctor.id, {
+                            ...doctor.permissions,
+                            delete_patient: nextValue,
+                          })
+                        }
+                      />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -132,6 +197,47 @@ const AdminDashboard = ({
         Platform patient records: {allPatients.length}
       </p>
     </section>
+  );
+};
+
+const PermissionToggle = ({ checked, onChange, disabled }) => {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange?.(!checked)}
+      disabled={disabled}
+      className={`relative inline-flex h-6 w-11 items-center rounded-full border transition-all ${
+        checked
+          ? "border-emerald-500 bg-emerald-500"
+          : "border-slate-300 bg-slate-200 dark:border-slate-600 dark:bg-slate-700"
+      } disabled:cursor-not-allowed disabled:opacity-50`}
+      aria-label="Toggle permission"
+    >
+      <span
+        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+          checked ? "translate-x-6" : "translate-x-1"
+        }`}
+      />
+    </button>
+  );
+};
+
+const AccessBadge = ({ permissions }) => {
+  const hasFullAccess =
+    Boolean(permissions?.view_all_patients) &&
+    Boolean(permissions?.edit_patient) &&
+    Boolean(permissions?.delete_patient);
+
+  return (
+    <span
+      className={`rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-wide ${
+        hasFullAccess
+          ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300"
+          : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
+      }`}
+    >
+      {hasFullAccess ? "Full Access" : "Limited Access"}
+    </span>
   );
 };
 

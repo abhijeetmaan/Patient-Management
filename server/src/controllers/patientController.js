@@ -1,11 +1,19 @@
 const { randomUUID } = require("crypto");
 const {
   addPatient,
-  deleteAppointmentsByPatientIdAndDoctorId,
+  deletePatient,
   deletePatientByIdAndDoctorId,
+  getPatients,
   getPatientsByDoctorId,
+  updatePatientById,
   updatePatientByIdAndDoctorId,
 } = require("../data/patientsStore");
+const {
+  deleteAppointmentsByPatientId,
+  deleteAppointmentsByPatientIdAndDoctorId,
+} = require("../data/appointmentsStore");
+const { getDoctorById } = require("../data/doctorsStore");
+const { hasPermission } = require("../utils/permissions");
 const {
   validateCreatePatientPayload,
   validatePrescriptionPayload,
@@ -86,7 +94,23 @@ const createPatient = (req, res) => {
 };
 
 const listPatients = (_req, res) => {
-  return res.status(200).json(getPatientsByDoctorId(_req.doctorId));
+  const canViewAllPatients =
+    _req.user?.role === "admin" ||
+    hasPermission(_req.user, "view_all_patients");
+
+  const patients = canViewAllPatients
+    ? getPatients()
+    : getPatientsByDoctorId(_req.doctorId);
+
+  const enrichedPatients = patients.map((patient) => {
+    const assignedDoctor = getDoctorById(patient.doctorId);
+    return {
+      ...patient,
+      assignedDoctorName: assignedDoctor?.name || "Unknown Doctor",
+    };
+  });
+
+  return res.status(200).json(enrichedPatients);
 };
 
 const addPatientVisit = (req, res) => {
@@ -96,17 +120,18 @@ const addPatientVisit = (req, res) => {
   }
 
   const newVisit = createVisitObject(req.body);
-  const updatedPatient = updatePatientByIdAndDoctorId(
-    req.params.id,
-    req.doctorId,
-    (currentPatient) => ({
-      ...currentPatient,
-      visits: [
-        newVisit,
-        ...(Array.isArray(currentPatient.visits) ? currentPatient.visits : []),
-      ],
-    }),
-  );
+  const updater = (currentPatient) => ({
+    ...currentPatient,
+    visits: [
+      newVisit,
+      ...(Array.isArray(currentPatient.visits) ? currentPatient.visits : []),
+    ],
+  });
+
+  const updatedPatient =
+    req.user?.role === "admin"
+      ? updatePatientById(req.params.id, updater)
+      : updatePatientByIdAndDoctorId(req.params.id, req.doctorId, updater);
 
   if (!updatedPatient) {
     return res.status(404).json({ message: "Patient not found" });
@@ -121,16 +146,17 @@ const updatePatientProfile = (req, res) => {
     return res.status(400).json({ message: validationError });
   }
 
-  const updatedPatient = updatePatientByIdAndDoctorId(
-    req.params.id,
-    req.doctorId,
-    (currentPatient) => ({
-      ...currentPatient,
-      name: String(req.body.name).trim(),
-      age: Number(req.body.age),
-      gender: String(req.body.gender).trim(),
-    }),
-  );
+  const updater = (currentPatient) => ({
+    ...currentPatient,
+    name: String(req.body.name).trim(),
+    age: Number(req.body.age),
+    gender: String(req.body.gender).trim(),
+  });
+
+  const updatedPatient =
+    req.user?.role === "admin"
+      ? updatePatientById(req.params.id, updater)
+      : updatePatientByIdAndDoctorId(req.params.id, req.doctorId, updater);
 
   if (!updatedPatient) {
     return res.status(404).json({ message: "Patient not found" });
@@ -140,13 +166,20 @@ const updatePatientProfile = (req, res) => {
 };
 
 const removePatient = (req, res) => {
-  const wasDeleted = deletePatientByIdAndDoctorId(req.params.id, req.doctorId);
+  const wasDeleted =
+    req.user?.role === "admin"
+      ? deletePatient(req.params.id)
+      : deletePatientByIdAndDoctorId(req.params.id, req.doctorId);
 
   if (!wasDeleted) {
     return res.status(404).json({ message: "Patient not found" });
   }
 
-  deleteAppointmentsByPatientIdAndDoctorId(req.params.id, req.doctorId);
+  if (req.user?.role === "admin") {
+    deleteAppointmentsByPatientId(req.params.id);
+  } else {
+    deleteAppointmentsByPatientIdAndDoctorId(req.params.id, req.doctorId);
+  }
 
   return res.status(200).json({ message: "Patient deleted successfully" });
 };
@@ -160,27 +193,28 @@ const savePrescription = (req, res) => {
 
   const prescription = createPrescriptionObject(req.body);
 
-  const updatedPatient = updatePatientByIdAndDoctorId(
-    req.params.id,
-    req.doctorId,
-    (currentPatient) => {
-      const existingPrescriptions = Array.isArray(currentPatient.prescriptions)
-        ? currentPatient.prescriptions
-        : [];
+  const updater = (currentPatient) => {
+    const existingPrescriptions = Array.isArray(currentPatient.prescriptions)
+      ? currentPatient.prescriptions
+      : [];
 
-      const nextPrescriptions = [
-        prescription,
-        ...existingPrescriptions.filter(
-          (item) => item.prescriptionDate !== prescription.prescriptionDate,
-        ),
-      ];
+    const nextPrescriptions = [
+      prescription,
+      ...existingPrescriptions.filter(
+        (item) => item.prescriptionDate !== prescription.prescriptionDate,
+      ),
+    ];
 
-      return {
-        ...currentPatient,
-        prescriptions: nextPrescriptions,
-      };
-    },
-  );
+    return {
+      ...currentPatient,
+      prescriptions: nextPrescriptions,
+    };
+  };
+
+  const updatedPatient =
+    req.user?.role === "admin"
+      ? updatePatientById(req.params.id, updater)
+      : updatePatientByIdAndDoctorId(req.params.id, req.doctorId, updater);
 
   if (!updatedPatient) {
     return res.status(404).json({ message: "Patient not found" });

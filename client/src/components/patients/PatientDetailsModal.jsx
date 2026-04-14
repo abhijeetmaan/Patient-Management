@@ -5,6 +5,7 @@ import Input from "../ui/Input";
 import ModalShell from "../ui/ModalShell";
 import Textarea from "../ui/Textarea";
 import VisitTimeline from "./VisitTimeline";
+import { useAuth } from "../../context/AuthContext";
 
 const initialVisitForm = {
   symptoms: "",
@@ -20,6 +21,7 @@ const PatientDetailsModal = ({
   addingVisit,
   loadingPatient,
 }) => {
+  const { hasPermission } = useAuth();
   const [formData, setFormData] = useState(initialVisitForm);
   const [validationMessage, setValidationMessage] = useState("");
 
@@ -88,56 +90,62 @@ const PatientDetailsModal = ({
         </section>
 
         <Card className="rounded-xl border-slate-200 bg-slate-50/80 p-4 md:p-5 dark:border-slate-700 dark:bg-slate-800/60">
-          <h3 className="mb-4 font-['Sora'] text-lg font-bold text-slate-800 dark:text-white">
-            Add New Visit
-          </h3>
+          {hasPermission("edit_patient") ? (
+            <>
+              <h3 className="mb-4 font-['Sora'] text-lg font-bold text-slate-800 dark:text-white">
+                Add New Visit
+              </h3>
 
-          <form className="space-y-3" onSubmit={submitVisit}>
-            <TextAreaField
-              label="Symptoms"
-              name="symptoms"
-              value={formData.symptoms}
-              onChange={updateForm}
-              required
-            />
+              <form className="space-y-3" onSubmit={submitVisit}>
+                <TextAreaField
+                  label="Symptoms"
+                  name="symptoms"
+                  value={formData.symptoms}
+                  onChange={updateForm}
+                  required
+                />
 
-            <TextAreaField
-              label="Diagnosis"
-              name="diagnosis"
-              value={formData.diagnosis}
-              onChange={updateForm}
-              required
-            />
+                <TextAreaField
+                  label="Diagnosis"
+                  name="diagnosis"
+                  value={formData.diagnosis}
+                  onChange={updateForm}
+                  required
+                />
 
-            <InputField
-              label="Medicines (comma separated)"
-              name="medicines"
-              value={formData.medicines}
-              onChange={updateForm}
-            />
+                <InputField
+                  label="Medicines (comma separated)"
+                  name="medicines"
+                  value={formData.medicines}
+                  onChange={updateForm}
+                />
 
-            <TextAreaField
-              label="Notes"
-              name="notes"
-              value={formData.notes}
-              onChange={updateForm}
-              rows={3}
-            />
+                <TextAreaField
+                  label="Notes"
+                  name="notes"
+                  value={formData.notes}
+                  onChange={updateForm}
+                  rows={3}
+                />
 
-            {validationMessage && (
-              <p className="text-sm font-medium text-red-600">
-                {validationMessage}
-              </p>
-            )}
+                {validationMessage && (
+                  <p className="text-sm font-medium text-red-600">
+                    {validationMessage}
+                  </p>
+                )}
 
-            <Button
-              type="submit"
-              loading={addingVisit}
-              className="w-full disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {addingVisit ? "Adding Visit..." : "Add Visit"}
-            </Button>
-          </form>
+                <Button
+                  type="submit"
+                  loading={addingVisit}
+                  className="w-full disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {addingVisit ? "Adding Visit..." : "Add Visit"}
+                </Button>
+              </form>
+            </>
+          ) : (
+            <AccessDeniedState />
+          )}
         </Card>
       </div>
     </ModalShell>
@@ -163,3 +171,16 @@ const TextAreaField = ({ label, rows = 2, required = false, ...props }) => {
 };
 
 export default PatientDetailsModal;
+
+const AccessDeniedState = () => {
+  return (
+    <div className="rounded-xl border border-dashed border-rose-300 bg-rose-50 p-5 text-center dark:border-rose-800 dark:bg-rose-950/30">
+      <h4 className="font-['Sora'] text-lg font-bold text-rose-700 dark:text-rose-200">
+        Access Denied
+      </h4>
+      <p className="mt-2 text-sm font-medium text-rose-600 dark:text-rose-300">
+        You do not have permission to add patient visits.
+      </p>
+    </div>
+  );
+};

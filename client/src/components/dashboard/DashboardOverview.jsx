@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { motion } from "framer-motion";
+import { useAuth } from "../../context/AuthContext";
 import Select from "react-select";
 import Button from "../ui/Button";
 import Card from "../ui/Card";
@@ -36,7 +38,9 @@ const DashboardOverview = ({
   onAddAppointment,
   onMarkAppointmentCompleted,
   onOpenPatients,
+  onAddPatient,
 }) => {
+  const { hasPermission } = useAuth();
   const [nowTick, setNowTick] = useState(() => Date.now());
   const autoCompletingAppointmentIdsRef = useRef(new Set());
   const [appointmentForm, setAppointmentForm] = useState({
@@ -453,13 +457,46 @@ const DashboardOverview = ({
       ? "Doctor Dashboard"
       : `Dr. ${firstName}'s Dashboard`;
 
+  const sectionMotion = {
+    hidden: { opacity: 0, y: 26 },
+    show: {
+      opacity: 1,
+      y: 0,
+      transition: { duration: 0.5, ease: "easeOut" },
+    },
+  };
+
+  const cardStaggerMotion = {
+    hidden: {},
+    show: {
+      transition: {
+        staggerChildren: 0.08,
+      },
+    },
+  };
+
+  const cardMotion = {
+    hidden: { opacity: 0, y: 18, scale: 0.985 },
+    show: {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      transition: { duration: 0.36, ease: "easeOut" },
+    },
+  };
+
   return (
-    <div className="space-y-10">
+    <motion.div
+      className="space-y-10"
+      variants={cardStaggerMotion}
+      initial="hidden"
+      animate="show"
+    >
       {loading ? (
         <DashboardSkeleton />
       ) : (
         <>
-          <section className="space-y-3">
+          <motion.section className="space-y-3" variants={sectionMotion}>
             <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-blue-700 dark:border-blue-900/60 dark:bg-blue-900/30 dark:text-blue-200">
               <Sparkles className="h-3.5 w-3.5" />
               {dashboardBadgeLabel}
@@ -468,129 +505,144 @@ const DashboardOverview = ({
               Welcome back, Dr. {formattedDoctorName}. This workspace is scoped
               to your patients and appointments.
             </p>
-          </section>
+          </motion.section>
 
-          <section className="space-y-4">
+          <motion.section className="space-y-4" variants={sectionMotion}>
             <div className="rounded-2xl border border-white/25 bg-white/35 px-4 py-2 backdrop-blur-sm dark:border-white/10 dark:bg-slate-900/30">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                 Advanced Insights
               </p>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <Card className="p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
-                <div className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200">
-                  <Stethoscope className="h-4.5 w-4.5" />
-                </div>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Most Common Illness
-                </p>
-                <p className="mt-1 text-base font-bold text-slate-900 dark:text-white">
-                  {advancedInsights.mostCommonIllness}
-                </p>
-                <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                  {advancedInsights.mostCommonCount} cases •{" "}
-                  {advancedInsights.diagnosisVariety} diagnoses tracked
-                </p>
-              </Card>
+            <motion.div
+              className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
+              variants={cardStaggerMotion}
+            >
+              <motion.div variants={cardMotion}>
+                <Card className="p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
+                  <div className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200">
+                    <Stethoscope className="h-4.5 w-4.5" />
+                  </div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Most Common Illness
+                  </p>
+                  <p className="mt-1 text-base font-bold text-slate-900 dark:text-white">
+                    {advancedInsights.mostCommonIllness}
+                  </p>
+                  <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                    {advancedInsights.mostCommonCount} cases •{" "}
+                    {advancedInsights.diagnosisVariety} diagnoses tracked
+                  </p>
+                </Card>
+              </motion.div>
 
-              <Card className="p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
-                <div className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200">
-                  <CalendarClock className="h-4.5 w-4.5" />
-                </div>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Total Visits Today
-                </p>
-                <p className="mt-1 text-2xl font-extrabold text-amber-700 dark:text-amber-200">
-                  {advancedInsights.totalVisitsToday}
-                </p>
-                <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                  Based on today&apos;s visit timeline
-                </p>
-              </Card>
+              <motion.div variants={cardMotion}>
+                <Card className="p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
+                  <div className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200">
+                    <CalendarClock className="h-4.5 w-4.5" />
+                  </div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Total Visits Today
+                  </p>
+                  <p className="mt-1 text-2xl font-extrabold text-amber-700 dark:text-amber-200">
+                    {advancedInsights.totalVisitsToday}
+                  </p>
+                  <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                    Based on today&apos;s visit timeline
+                  </p>
+                </Card>
+              </motion.div>
 
-              <Card className="p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
-                <div className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
-                  <TrendingUp className="h-4.5 w-4.5" />
-                </div>
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Peak Day
-                </p>
-                <p className="mt-1 text-base font-bold text-slate-900 dark:text-white">
-                  {advancedInsights.peakDayLabel}
-                </p>
-                <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                  {advancedInsights.peakDayVisits} visits on the busiest day
-                </p>
-              </Card>
-            </div>
-          </section>
+              <motion.div variants={cardMotion}>
+                <Card className="p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
+                  <div className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
+                    <TrendingUp className="h-4.5 w-4.5" />
+                  </div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Peak Day
+                  </p>
+                  <p className="mt-1 text-base font-bold text-slate-900 dark:text-white">
+                    {advancedInsights.peakDayLabel}
+                  </p>
+                  <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                    {advancedInsights.peakDayVisits} visits on the busiest day
+                  </p>
+                </Card>
+              </motion.div>
+            </motion.div>
+          </motion.section>
 
-          <section className="space-y-4">
+          <motion.section className="space-y-4" variants={sectionMotion}>
             <div className="rounded-2xl border border-white/25 bg-white/35 px-4 py-2 backdrop-blur-sm dark:border-white/10 dark:bg-slate-900/30">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                 Insights Engine
               </p>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <motion.div
+              className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+              variants={cardStaggerMotion}
+            >
               {insights.map((insight) => (
-                <Card
-                  key={insight.key}
-                  className="group p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
-                >
-                  <div className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800/90">
-                    <insight.icon className={`h-4.5 w-4.5 ${insight.tone}`} />
-                  </div>
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    {insight.title}
-                  </p>
-                  <p className="mt-1 text-base font-bold text-slate-900 dark:text-white">
-                    {insight.value}
-                  </p>
-                  {insight.meta && (
-                    <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
-                      {insight.meta}
+                <motion.div key={insight.key} variants={cardMotion}>
+                  <Card className="group p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
+                    <div className="mb-2 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800/90">
+                      <insight.icon className={`h-4.5 w-4.5 ${insight.tone}`} />
+                    </div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      {insight.title}
                     </p>
-                  )}
-                </Card>
+                    <p className="mt-1 text-base font-bold text-slate-900 dark:text-white">
+                      {insight.value}
+                    </p>
+                    {insight.meta && (
+                      <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                        {insight.meta}
+                      </p>
+                    )}
+                  </Card>
+                </motion.div>
               ))}
-            </div>
-          </section>
+            </motion.div>
+          </motion.section>
 
-          <section className="space-y-4">
+          <motion.section className="space-y-4" variants={sectionMotion}>
             <div className="rounded-2xl border border-white/25 bg-white/35 px-4 py-2 backdrop-blur-sm dark:border-white/10 dark:bg-slate-900/30">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                 Dashboard Snapshot
               </p>
             </div>
 
-            <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
+            <motion.div
+              className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4"
+              variants={cardStaggerMotion}
+            >
               {statCards.map((card) => (
-                <Card
-                  as="article"
-                  key={card.key}
-                  className="group p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-md"
-                >
-                  <div
-                    className={`mb-4 flex h-11 w-11 items-center justify-center rounded-xl transition-all duration-300 ${card.tone.iconBg}`}
+                <motion.div key={card.key} variants={cardMotion}>
+                  <Card
+                    as="article"
+                    className="group p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-md"
                   >
-                    <card.icon />
-                  </div>
-                  <p
-                    className={`text-4xl font-extrabold md:text-[2.2rem] ${card.tone.value}`}
-                  >
-                    {card.value}
-                  </p>
-                  <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
-                    {card.label}
-                  </p>
-                </Card>
+                    <div
+                      className={`mb-4 flex h-11 w-11 items-center justify-center rounded-xl transition-all duration-300 ${card.tone.iconBg}`}
+                    >
+                      <card.icon />
+                    </div>
+                    <p
+                      className={`text-4xl font-extrabold md:text-[2.2rem] ${card.tone.value}`}
+                    >
+                      {card.value}
+                    </p>
+                    <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                      {card.label}
+                    </p>
+                  </Card>
+                </motion.div>
               ))}
-            </div>
-          </section>
+            </motion.div>
+          </motion.section>
 
-          <section className="space-y-4">
+          <motion.section className="space-y-4" variants={sectionMotion}>
             <div className="rounded-2xl border border-white/25 bg-white/35 px-4 py-2 backdrop-blur-sm dark:border-white/10 dark:bg-slate-900/30">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                 Charts & Trends
@@ -639,9 +691,9 @@ const DashboardOverview = ({
                 )}
               </Card>
             </div>
-          </section>
+          </motion.section>
 
-          <section className="space-y-4">
+          <motion.section className="space-y-4" variants={sectionMotion}>
             <div className="rounded-2xl border border-white/25 bg-white/35 px-4 py-2 backdrop-blur-sm dark:border-white/10 dark:bg-slate-900/30">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                 Scheduling & Activity
@@ -650,88 +702,99 @@ const DashboardOverview = ({
 
             <div className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr),minmax(0,1.05fr)]">
               <Card className="p-6 md:p-7">
-                <div className="mb-4 border-b border-slate-100 pb-3 dark:border-slate-800">
-                  <h3 className="inline-flex items-center gap-2 font-['Sora'] text-xl font-bold text-slate-900 dark:text-white">
-                    <PlusCircle className="h-5 w-5 text-brand-600 dark:text-brand-200" />
-                    Schedule Appointment
-                  </h3>
-                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">
-                    Add new consultations for patient follow-ups.
-                  </p>
-                </div>
-
-                <form className="space-y-3" onSubmit={submitAppointment}>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                    Patient
-                    <div className="mt-1">
-                      <Select
-                        options={patientOptions}
-                        value={selectedPatientOption}
-                        onChange={handleSelectPatient}
-                        isSearchable
-                        placeholder="Select patient"
-                        noOptionsMessage={() => "No patients found"}
-                        formatOptionLabel={(option) => (
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="font-medium">{option.name}</span>
-                            <span className="text-xs opacity-80">
-                              {option.age}y • {option.gender}
-                            </span>
-                          </div>
-                        )}
-                        styles={getPatientSelectStyles(theme)}
-                      />
-                    </div>
-                  </label>
-
-                  {selectedPatient && (
-                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-900/30 dark:text-emerald-200">
-                      <p className="font-semibold">Selected Patient</p>
-                      <p className="mt-0.5">
-                        {selectedPatient.name} • {selectedPatient.age} years •{" "}
-                        {selectedPatient.gender}
+                {hasPermission("create_appointment") ? (
+                  <>
+                    <div className="mb-4 border-b border-slate-100 pb-3 dark:border-slate-800">
+                      <h3 className="inline-flex items-center gap-2 font-['Sora'] text-xl font-bold text-slate-900 dark:text-white">
+                        <PlusCircle className="h-5 w-5 text-brand-600 dark:text-brand-200" />
+                        Schedule Appointment
+                      </h3>
+                      <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">
+                        Add new consultations for patient follow-ups.
                       </p>
                     </div>
-                  )}
 
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                      Date
-                      <Input
-                        type="date"
-                        name="date"
-                        value={appointmentForm.date}
-                        onChange={updateAppointmentForm}
-                      />
-                    </label>
+                    <form className="space-y-3" onSubmit={submitAppointment}>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                        Patient
+                        <div className="mt-1">
+                          <Select
+                            options={patientOptions}
+                            value={selectedPatientOption}
+                            onChange={handleSelectPatient}
+                            isSearchable
+                            placeholder="Select patient"
+                            noOptionsMessage={() => "No patients found"}
+                            formatOptionLabel={(option) => (
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-medium">
+                                  {option.name}
+                                </span>
+                                <span className="text-xs opacity-80">
+                                  {option.age}y • {option.gender}
+                                </span>
+                              </div>
+                            )}
+                            styles={getPatientSelectStyles(theme)}
+                          />
+                        </div>
+                      </label>
 
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                      Time
-                      <Input
-                        type="time"
-                        name="time"
-                        value={appointmentForm.time}
-                        onChange={updateAppointmentForm}
-                      />
-                    </label>
-                  </div>
+                      {selectedPatient && (
+                        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-900/30 dark:text-emerald-200">
+                          <p className="font-semibold">Selected Patient</p>
+                          <p className="mt-0.5">
+                            {selectedPatient.name} • {selectedPatient.age} years
+                            • {selectedPatient.gender}
+                          </p>
+                        </div>
+                      )}
 
-                  {appointmentValidation && (
-                    <p className="text-sm font-medium text-red-600 dark:text-red-300">
-                      {appointmentValidation}
-                    </p>
-                  )}
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                          Date
+                          <Input
+                            type="date"
+                            name="date"
+                            value={appointmentForm.date}
+                            onChange={updateAppointmentForm}
+                          />
+                        </label>
 
-                  <Button
-                    type="submit"
-                    loading={schedulingAppointment}
-                    className="w-full"
-                  >
-                    {schedulingAppointment
-                      ? "Scheduling..."
-                      : "Schedule Appointment"}
-                  </Button>
-                </form>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                          Time
+                          <Input
+                            type="time"
+                            name="time"
+                            value={appointmentForm.time}
+                            onChange={updateAppointmentForm}
+                          />
+                        </label>
+                      </div>
+
+                      {appointmentValidation && (
+                        <p className="text-sm font-medium text-red-600 dark:text-red-300">
+                          {appointmentValidation}
+                        </p>
+                      )}
+
+                      <Button
+                        type="submit"
+                        loading={schedulingAppointment}
+                        className="w-full"
+                      >
+                        {schedulingAppointment
+                          ? "Scheduling..."
+                          : "Schedule Appointment"}
+                      </Button>
+                    </form>
+                  </>
+                ) : (
+                  <AccessDeniedState
+                    title="Access Denied"
+                    message="You do not have permission to create appointments."
+                  />
+                )}
               </Card>
 
               <Card className="p-6 md:p-7">
@@ -757,9 +820,24 @@ const DashboardOverview = ({
                 ) : null}
 
                 {Object.keys(groupedAppointments).length === 0 ? (
-                  <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm font-medium text-slate-500 transition-all duration-300 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-300">
-                    No upcoming appointments.
-                  </p>
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center transition-all duration-300 dark:border-slate-700 dark:bg-slate-800/70">
+                    <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-900/30 dark:text-brand-200">
+                      <CalendarClock className="h-7 w-7" />
+                    </div>
+                    <p className="font-['Sora'] text-lg font-bold text-slate-800 dark:text-white">
+                      No appointments scheduled
+                    </p>
+                    <p className="mt-2 text-sm font-medium text-slate-500 dark:text-slate-300">
+                      When you add patients, you can schedule visits here.
+                    </p>
+                    <Button
+                      type="button"
+                      onClick={onAddPatient}
+                      className="mt-4 inline-flex items-center justify-center"
+                    >
+                      Add Patient
+                    </Button>
+                  </div>
                 ) : (
                   <div className="space-y-4">
                     {Object.entries(groupedAppointments).map(
@@ -820,7 +898,9 @@ const DashboardOverview = ({
                                     {isInCabin ? (
                                       <p className="mt-2 inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-emerald-800 dark:border-emerald-700 dark:bg-emerald-900/35 dark:text-emerald-200">
                                         <Clock3 className="h-3 w-3" />
-                                        In-Cabin •{" "}
+                                        with{" "}
+                                        {appointment.doctorName ||
+                                          "Doctor"} • In-Cabin •{" "}
                                         {formatCountdown(
                                           appointment.cabinSecondsLeft,
                                         )}{" "}
@@ -860,63 +940,72 @@ const DashboardOverview = ({
                 )}
               </Card>
             </div>
-          </section>
+          </motion.section>
 
-          <Card className="p-6 md:p-7">
-            <div className="mb-4 flex items-center justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
-              <div>
-                <h3 className="font-['Sora'] text-xl font-bold text-slate-900 dark:text-white">
-                  Recent Activity
-                </h3>
-                <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">
-                  System log of patient and appointment events.
-                </p>
+          <motion.div variants={sectionMotion}>
+            <Card className="p-6 md:p-7">
+              <div className="mb-4 flex items-center justify-between gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
+                <div>
+                  <h3 className="font-['Sora'] text-xl font-bold text-slate-900 dark:text-white">
+                    Recent Activity
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">
+                    System log of patient and appointment events.
+                  </p>
+                </div>
+                <Button
+                  onClick={onOpenPatients}
+                  variant="primary"
+                  className="flex items-center gap-1.5 bg-gradient-to-r from-purple-600 to-blue-600 px-3 py-1.5 text-sm hover:from-purple-500 hover:to-blue-500"
+                >
+                  <ArrowRight className="h-4 w-4" />
+                  Open Patients
+                </Button>
               </div>
-              <Button
-                onClick={onOpenPatients}
-                variant="primary"
-                className="flex items-center gap-1.5 bg-gradient-to-r from-purple-600 to-blue-600 px-3 py-1.5 text-sm hover:from-purple-500 hover:to-blue-500"
-              >
-                <ArrowRight className="h-4 w-4" />
-                Open Patients
-              </Button>
-            </div>
 
-            {auditEntries.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm font-medium text-slate-500 transition-all duration-300 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-300">
-                No activity recorded yet.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {auditEntries.map((entry, index) => (
-                  <article
-                    key={entry.id || `${entry.timestamp}-${index}`}
-                    className="relative overflow-hidden rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-brand-200 hover:shadow-md dark:border-slate-700 dark:bg-slate-800/80 dark:hover:border-slate-500"
-                  >
-                    <span className="absolute left-0 top-0 h-full w-1 bg-gradient-to-b from-blue-500 via-indigo-500 to-cyan-400" />
-                    <div className="ml-2 flex items-start gap-3">
-                      <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-100">
-                        <ActivityLogBadge action={entry.action} />
-                      </div>
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <p className="text-sm font-semibold text-slate-800 dark:text-white">
-                          {entry.message || formatAuditMessage(entry)}
-                        </p>
-                        <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-                          <span>{entry.user || "Doctor"}</span>
-                          <span>•</span>
-                          <span>{formatActivityTime(entry.timestamp)}</span>
+              {auditEntries.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm font-medium text-slate-500 transition-all duration-300 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-300">
+                  No activity recorded yet.
+                </p>
+              ) : (
+                <motion.div
+                  className="space-y-3"
+                  variants={cardStaggerMotion}
+                  initial="hidden"
+                  whileInView="show"
+                  viewport={{ once: true, amount: 0.2 }}
+                >
+                  {auditEntries.map((entry, index) => (
+                    <motion.article
+                      key={entry.id || `${entry.timestamp}-${index}`}
+                      variants={cardMotion}
+                      className="relative overflow-hidden rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-brand-200 hover:shadow-md dark:border-slate-700 dark:bg-slate-800/80 dark:hover:border-slate-500"
+                    >
+                      <span className="absolute left-0 top-0 h-full w-1 bg-gradient-to-b from-blue-500 via-indigo-500 to-cyan-400" />
+                      <div className="ml-2 flex items-start gap-3">
+                        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-100">
+                          <ActivityLogBadge action={entry.action} />
+                        </div>
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <p className="text-sm font-semibold text-slate-800 dark:text-white">
+                            {entry.message || formatAuditMessage(entry)}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                            <span>{entry.user || "Doctor"}</span>
+                            <span>•</span>
+                            <span>{formatActivityTime(entry.timestamp)}</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-          </Card>
+                    </motion.article>
+                  ))}
+                </motion.div>
+              )}
+            </Card>
+          </motion.div>
         </>
       )}
-    </div>
+    </motion.div>
   );
 };
 
@@ -926,9 +1015,9 @@ const DashboardSkeleton = () => {
       <section className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
         {Array.from({ length: 4 }).map((_, index) => (
           <Card key={index} className="p-5">
-            <div className="h-11 w-11 animate-pulse rounded-xl bg-slate-200 dark:bg-slate-700" />
-            <div className="mt-4 h-10 w-24 animate-pulse rounded-lg bg-slate-200 dark:bg-slate-700" />
-            <div className="mt-2 h-3 w-28 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+            <div className="saas-skeleton h-11 w-11 rounded-xl" />
+            <div className="saas-skeleton mt-4 h-10 w-24 rounded-lg" />
+            <div className="saas-skeleton mt-2 h-3 w-28 rounded" />
           </Card>
         ))}
       </section>
@@ -936,21 +1025,18 @@ const DashboardSkeleton = () => {
       <section className="grid gap-5 xl:grid-cols-2">
         {Array.from({ length: 2 }).map((_, index) => (
           <Card key={index} className="p-5 md:p-6">
-            <div className="h-7 w-40 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
-            <div className="mt-2 h-4 w-56 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
-            <div className="mt-6 h-64 animate-pulse rounded-xl bg-slate-200 dark:bg-slate-800" />
+            <div className="saas-skeleton h-7 w-40 rounded" />
+            <div className="saas-skeleton mt-2 h-4 w-56 rounded" />
+            <div className="saas-skeleton mt-6 h-64 rounded-xl" />
           </Card>
         ))}
       </section>
 
       <Card className="p-5 md:p-6">
-        <div className="h-7 w-44 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+        <div className="saas-skeleton h-7 w-44 rounded" />
         <div className="mt-5 space-y-3">
           {Array.from({ length: 4 }).map((_, index) => (
-            <div
-              key={index}
-              className="h-16 animate-pulse rounded-xl bg-slate-200 dark:bg-slate-800"
-            />
+            <div key={index} className="saas-skeleton h-16 rounded-xl" />
           ))}
         </div>
       </Card>
@@ -1226,6 +1312,19 @@ const Badge = ({ label }) => {
       {icon}
       {label}
     </span>
+  );
+};
+
+const AccessDeniedState = ({ title, message }) => {
+  return (
+    <div className="rounded-2xl border border-dashed border-rose-300 bg-rose-50 p-6 text-center dark:border-rose-800 dark:bg-rose-950/30">
+      <h4 className="font-['Sora'] text-lg font-bold text-rose-700 dark:text-rose-200">
+        {title}
+      </h4>
+      <p className="mt-2 text-sm font-medium text-rose-600 dark:text-rose-300">
+        {message}
+      </p>
+    </div>
   );
 };
 
