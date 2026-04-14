@@ -7,14 +7,48 @@ const adminRoutes = require("./routes/adminRoutes");
 
 const app = express();
 
-const allowedOrigins = [
+const configuredOrigins = [
+  process.env.FRONTEND_URL,
+  process.env.FRONTEND_URL_2,
+  ...(process.env.FRONTEND_URLS || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+].filter(Boolean);
+
+const staticAllowedOrigins = [
   "http://localhost:5173",
-  process.env.FRONTEND_URL || "https://your-vercel-app.vercel.app",
+  "https://patient-management-fawn.vercel.app",
+  "https://patient-management.vercel.app",
+  ...configuredOrigins,
 ];
+
+const isAllowedOrigin = (origin) => {
+  if (!origin) {
+    return true;
+  }
+
+  if (staticAllowedOrigins.includes(origin)) {
+    return true;
+  }
+
+  // Allow Vercel preview deployments (e.g. branch deploy URLs).
+  if (/^https:\/\/[a-zA-Z0-9-]+\.vercel\.app$/.test(origin)) {
+    return true;
+  }
+
+  return false;
+};
 
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin(origin, callback) {
+      if (isAllowedOrigin(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("Not allowed by CORS"));
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
