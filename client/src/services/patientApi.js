@@ -182,6 +182,14 @@ export const updatePatient = async (patientId, payload) => {
   });
 };
 
+export const savePatientPrescription = async (patientId, payload) => {
+  return requestJson(`/patients/${patientId}/prescriptions`, {
+    method: "POST",
+    headers: buildAuthHeaders(true),
+    body: JSON.stringify(payload),
+  });
+};
+
 export const fetchAppointments = async () => {
   return requestJson("/appointments", {
     headers: buildAuthHeaders(),

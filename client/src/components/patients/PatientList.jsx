@@ -1,15 +1,19 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Button from "../ui/Button";
 import Card from "../ui/Card";
 import Input from "../ui/Input";
 import Select from "../ui/Select";
 import {
+  ArrowDownAZ,
+  ArrowUpAZ,
   ChevronRight,
   ClipboardPlus,
   Filter,
   PenSquare,
   Search,
   Trash2,
+  User,
+  UserRoundCheck,
   UserRound,
   Users,
 } from "lucide-react";
@@ -23,7 +27,18 @@ const PatientList = ({
   onEdit,
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedFilter, setSelectedFilter] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [genderFilter, setGenderFilter] = useState("all");
+  const [ageFilter, setAgeFilter] = useState("all");
+  const [sortOrder, setSortOrder] = useState("latest");
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   const normalizedPatients = useMemo(() => {
     return patients.map((patient) => ({
@@ -32,21 +47,35 @@ const PatientList = ({
     }));
   }, [patients]);
 
-  const diagnosisOptions = useMemo(() => {
-    return [
-      ...new Set(
-        normalizedPatients.map((patient) => patient.diagnosis).filter(Boolean),
-      ),
-    ];
-  }, [normalizedPatients]);
-
   const filteredPatients = useMemo(() => {
-    return normalizedPatients.filter(
-      (patient) =>
-        patient.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
-        (selectedFilter === "" || patient.diagnosis === selectedFilter),
-    );
-  }, [normalizedPatients, searchTerm, selectedFilter]);
+    return normalizedPatients
+      .filter((patient) => {
+        const searchValue = debouncedSearch.toLowerCase();
+        const matchesSearch =
+          patient.name.toLowerCase().includes(searchValue) ||
+          patient.diagnosis.toLowerCase().includes(searchValue);
+
+        const matchesGender =
+          genderFilter === "all" ||
+          (patient.gender || "").toLowerCase() === genderFilter;
+
+        const age = Number(patient.age);
+        const matchesAge =
+          ageFilter === "all" ||
+          (ageFilter === "under18" && age < 18) ||
+          (ageFilter === "18to40" && age >= 18 && age <= 40) ||
+          (ageFilter === "40plus" && age > 40);
+
+        return matchesSearch && matchesGender && matchesAge;
+      })
+      .sort((a, b) =>
+        sortOrder === "latest"
+          ? new Date(b.createdAt || b.admissionDate || 0) -
+            new Date(a.createdAt || a.admissionDate || 0)
+          : new Date(a.createdAt || a.admissionDate || 0) -
+            new Date(b.createdAt || b.admissionDate || 0),
+      );
+  }, [normalizedPatients, debouncedSearch, genderFilter, ageFilter, sortOrder]);
 
   return (
     <Card className="p-6 transition-all duration-300 md:p-7">
@@ -56,37 +85,90 @@ const PatientList = ({
           Patients
         </h2>
         <span className="rounded-full bg-brand-50 px-3 py-1 text-sm font-semibold text-brand-700 transition-all duration-300 dark:bg-brand-900/30 dark:text-brand-100">
-          {filteredPatients.length}/{patients.length}
+          Showing {filteredPatients.length} of {patients.length} patients
         </span>
       </div>
 
-      <div className="mb-6 grid gap-3 sm:grid-cols-[1fr,220px]">
-        <label className="relative block">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <Input
-            type="text"
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="Search by patient name"
-            className="mt-0 pl-9"
-          />
-        </label>
+      <div className="mb-6 rounded-2xl border border-white/55 bg-gradient-to-br from-white/90 via-brand-50/65 to-cyan-50/70 p-3 shadow-sm backdrop-blur-md dark:border-slate-700/70 dark:from-slate-900/80 dark:via-slate-900/75 dark:to-slate-800/70 sm:p-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,1fr),repeat(3,minmax(0,190px))]">
+          <label className="block min-w-0 md:col-span-2 xl:col-span-1">
+            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
+              Search
+            </span>
+            <span className="relative block">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Input
+                type="text"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Search name or diagnosis"
+                className="mt-0 pl-9 pr-9 text-sm"
+              />
+            </span>
+          </label>
 
-        <label className="relative block">
-          <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <Select
-            value={selectedFilter}
-            onChange={(event) => setSelectedFilter(event.target.value)}
-            className="mt-0 pl-9"
-          >
-            <option value="">All diagnoses</option>
-            {diagnosisOptions.map((diagnosis) => (
-              <option key={diagnosis} value={diagnosis}>
-                {diagnosis}
-              </option>
-            ))}
-          </Select>
-        </label>
+          <label className="block min-w-0">
+            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
+              Gender
+            </span>
+            <span className="relative block">
+              <UserRoundCheck className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Select
+                value={genderFilter}
+                onChange={(event) => setGenderFilter(event.target.value)}
+                className="mt-0 pl-9 pr-9"
+              >
+                <option value="all">All genders</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+              </Select>
+            </span>
+          </label>
+
+          <label className="block min-w-0">
+            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
+              Age
+            </span>
+            <span className="relative block">
+              <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Select
+                value={ageFilter}
+                onChange={(event) => setAgeFilter(event.target.value)}
+                className="mt-0 pl-9 pr-9"
+              >
+                <option value="all">All ages</option>
+                <option value="under18">Under 18</option>
+                <option value="18to40">18–40</option>
+                <option value="40plus">40+</option>
+              </Select>
+            </span>
+          </label>
+
+          <label className="block min-w-0">
+            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
+              Sort
+            </span>
+            <span className="relative block">
+              <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Select
+                value={sortOrder}
+                onChange={(event) => setSortOrder(event.target.value)}
+                className="mt-0 pl-9 pr-9"
+              >
+                <option value="latest">Latest</option>
+                <option value="oldest">Oldest</option>
+              </Select>
+            </span>
+          </label>
+        </div>
+        <div className="mt-3 flex items-center justify-end gap-2 text-xs font-semibold text-slate-500 dark:text-slate-300">
+          {sortOrder === "latest" ? (
+            <ArrowDownAZ className="h-4 w-4" />
+          ) : (
+            <ArrowUpAZ className="h-4 w-4" />
+          )}
+          Sorted by {sortOrder === "latest" ? "Latest" : "Oldest"}
+        </div>
       </div>
 
       {loading ? (
@@ -109,7 +191,7 @@ const PatientList = ({
         <EmptyPatientsState />
       ) : filteredPatients.length === 0 ? (
         <p className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm font-medium text-slate-500 transition-all duration-300 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-300">
-          No patients found.
+          🚫 No patients found. Try adjusting filters.
         </p>
       ) : (
         <div className="space-y-4">

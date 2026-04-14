@@ -5,6 +5,7 @@ const {
   createPatient,
   listPatients,
   removePatient,
+  savePrescription,
   updatePatientProfile,
 } = require("../controllers/patientController");
 
@@ -14,6 +15,7 @@ router.use(authMiddleware);
 router.post("/", createPatient);
 router.get("/", listPatients);
 router.post("/:id/visit", addPatientVisit);
+router.post("/:id/prescriptions", savePrescription);
 router.put("/:id", updatePatientProfile);
 router.delete("/:id", removePatient);
 

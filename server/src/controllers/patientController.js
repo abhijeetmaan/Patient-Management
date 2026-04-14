@@ -8,6 +8,7 @@ const {
 } = require("../data/patientsStore");
 const {
   validateCreatePatientPayload,
+  validatePrescriptionPayload,
   validateVisitPayload,
   validateUpdatePatientPayload,
 } = require("../utils/validatePatient");
@@ -37,6 +38,24 @@ const createVisitObject = ({
   notes: String(notes || "").trim(),
 });
 
+const createPrescriptionObject = ({
+  diagnosis,
+  medicines,
+  notes,
+  doctorName,
+  generatedAt,
+  prescriptionDate,
+}) => ({
+  id: randomUUID(),
+  diagnosis: String(diagnosis || "").trim(),
+  medicines: toMedicinesArray(medicines),
+  notes: String(notes || "").trim(),
+  doctorName: String(doctorName || "").trim(),
+  prescriptionDate: String(prescriptionDate || "").trim(),
+  generatedAt: generatedAt || new Date().toISOString(),
+  savedAt: new Date().toISOString(),
+});
+
 const createPatient = (req, res) => {
   const validationError = validateCreatePatientPayload(req.body);
 
@@ -58,6 +77,7 @@ const createPatient = (req, res) => {
     age: Number(req.body.age),
     gender: String(req.body.gender).trim(),
     visits: [firstVisit],
+    prescriptions: [],
     createdAt: admissionDate,
   };
 
@@ -131,10 +151,52 @@ const removePatient = (req, res) => {
   return res.status(200).json({ message: "Patient deleted successfully" });
 };
 
+const savePrescription = (req, res) => {
+  const validationError = validatePrescriptionPayload(req.body);
+
+  if (validationError) {
+    return res.status(400).json({ message: validationError });
+  }
+
+  const prescription = createPrescriptionObject(req.body);
+
+  const updatedPatient = updatePatientByIdAndDoctorId(
+    req.params.id,
+    req.doctorId,
+    (currentPatient) => {
+      const existingPrescriptions = Array.isArray(currentPatient.prescriptions)
+        ? currentPatient.prescriptions
+        : [];
+
+      const nextPrescriptions = [
+        prescription,
+        ...existingPrescriptions.filter(
+          (item) => item.prescriptionDate !== prescription.prescriptionDate,
+        ),
+      ];
+
+      return {
+        ...currentPatient,
+        prescriptions: nextPrescriptions,
+      };
+    },
+  );
+
+  if (!updatedPatient) {
+    return res.status(404).json({ message: "Patient not found" });
+  }
+
+  return res.status(201).json({
+    message: "Prescription saved successfully",
+    prescription,
+  });
+};
+
 module.exports = {
   createPatient,
   listPatients,
   addPatientVisit,
   updatePatientProfile,
   removePatient,
+  savePrescription,
 };

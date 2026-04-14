@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { jsPDF } from "jspdf";
 import { FileText, Pill, Plus, Trash2 } from "lucide-react";
+import { savePatientPrescription } from "../../services/patientApi";
 import Button from "../ui/Button";
 import Card from "../ui/Card";
 import Input from "../ui/Input";
@@ -11,12 +12,108 @@ const createDefaultLine = () => ({
   instructions: "",
 });
 
-const PrescriptionGenerator = ({ patientName }) => {
+const getLocalDateInputValue = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const formatDisplayDate = (value) => {
+  if (!value) {
+    return "";
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [year, month, day] = value.split("-");
+    return `${day}/${month}/${year}`;
+  }
+
+  const parsedDate = new Date(value);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return "";
+  }
+
+  return parsedDate.toLocaleDateString();
+};
+
+const PrescriptionGenerator = ({
+  patientId,
+  patientName,
+  latestDiagnosis,
+  doctorName,
+  prescriptions,
+  onPrescriptionSaved,
+}) => {
+  const todayDate = useMemo(() => getLocalDateInputValue(new Date()), []);
   const [showForm, setShowForm] = useState(false);
   const [lines, setLines] = useState([createDefaultLine()]);
+  const [diagnosis, setDiagnosis] = useState(String(latestDiagnosis || ""));
+  const [prescriptionDate, setPrescriptionDate] = useState(todayDate);
   const [notes, setNotes] = useState("");
+  const [selectedPrescriptionId, setSelectedPrescriptionId] = useState("");
+  const [savingPrescription, setSavingPrescription] = useState(false);
   const [validationMessage, setValidationMessage] = useState("");
   const [generatedPrescription, setGeneratedPrescription] = useState(null);
+
+  useEffect(() => {
+    setDiagnosis(String(latestDiagnosis || ""));
+  }, [latestDiagnosis]);
+
+  const prescriptionHistory = useMemo(() => {
+    const items = Array.isArray(prescriptions) ? prescriptions : [];
+
+    return [...items].sort(
+      (a, b) =>
+        new Date(b.prescriptionDate || b.generatedAt || b.savedAt || 0) -
+        new Date(a.prescriptionDate || a.generatedAt || a.savedAt || 0),
+    );
+  }, [prescriptions]);
+
+  useEffect(() => {
+    if (prescriptionHistory.length === 0) {
+      setSelectedPrescriptionId("");
+      return;
+    }
+
+    const hasCurrentSelection = prescriptionHistory.some(
+      (item) => item.id === selectedPrescriptionId,
+    );
+
+    if (!hasCurrentSelection) {
+      setSelectedPrescriptionId(prescriptionHistory[0].id);
+    }
+  }, [prescriptionHistory, selectedPrescriptionId]);
+
+  useEffect(() => {
+    if (!selectedPrescriptionId) {
+      return;
+    }
+
+    const selectedPrescription = prescriptionHistory.find(
+      (item) => item.id === selectedPrescriptionId,
+    );
+
+    if (!selectedPrescription) {
+      return;
+    }
+
+    setGeneratedPrescription({
+      patientName,
+      createdAt:
+        selectedPrescription.generatedAt || selectedPrescription.savedAt,
+      prescriptionDate: selectedPrescription.prescriptionDate || "",
+      diagnosis: selectedPrescription.diagnosis || "",
+      medicines: Array.isArray(selectedPrescription.medicines)
+        ? selectedPrescription.medicines
+        : [],
+      notes: selectedPrescription.notes || "",
+    });
+
+    if (selectedPrescription.prescriptionDate) {
+      setPrescriptionDate(selectedPrescription.prescriptionDate);
+    }
+  }, [selectedPrescriptionId, prescriptionHistory, patientName]);
 
   const generatedDate = useMemo(() => {
     if (!generatedPrescription?.createdAt) {
@@ -48,8 +145,13 @@ const PrescriptionGenerator = ({ patientName }) => {
     });
   };
 
-  const generatePrescription = (event) => {
+  const generatePrescription = async (event) => {
     event.preventDefault();
+
+    if (!patientId) {
+      setValidationMessage("Patient not found. Please reopen the profile.");
+      return;
+    }
 
     const cleanedLines = lines
       .map((line) => ({
@@ -66,13 +168,59 @@ const PrescriptionGenerator = ({ patientName }) => {
       return;
     }
 
-    setValidationMessage("");
-    setGeneratedPrescription({
-      patientName,
-      createdAt: new Date().toISOString(),
-      lines: cleanedLines,
-      notes: String(notes || "").trim(),
-    });
+    if (!String(diagnosis || "").trim()) {
+      setValidationMessage("Diagnosis is required.");
+      return;
+    }
+
+    if (!String(prescriptionDate || "").trim()) {
+      setValidationMessage("Prescription date is required.");
+      return;
+    }
+
+    const diagnosisValue = String(diagnosis || "").trim();
+    const noteValue = String(notes || "").trim();
+    const medicinesForStorage = cleanedLines.map(
+      (line) => `${line.medicine} - ${line.dosage} (${line.instructions})`,
+    );
+
+    try {
+      setSavingPrescription(true);
+      setValidationMessage("");
+
+      const response = await savePatientPrescription(patientId, {
+        diagnosis: diagnosisValue,
+        medicines: medicinesForStorage,
+        notes: noteValue,
+        prescriptionDate,
+        doctorName: doctorName || "Assigned Physician",
+        generatedAt: new Date().toISOString(),
+      });
+
+      if (response?.prescription && onPrescriptionSaved) {
+        onPrescriptionSaved(response.prescription);
+      }
+
+      if (response?.prescription?.id) {
+        setSelectedPrescriptionId(response.prescription.id);
+      }
+
+      setGeneratedPrescription({
+        patientName,
+        createdAt:
+          response?.prescription?.generatedAt || new Date().toISOString(),
+        prescriptionDate:
+          response?.prescription?.prescriptionDate || prescriptionDate,
+        diagnosis: diagnosisValue,
+        lines: cleanedLines,
+        medicines: medicinesForStorage,
+        notes: noteValue,
+      });
+    } catch (error) {
+      setValidationMessage(error.message || "Failed to save prescription.");
+    } finally {
+      setSavingPrescription(false);
+    }
   };
 
   const downloadPdf = () => {
@@ -97,8 +245,15 @@ const PrescriptionGenerator = ({ patientName }) => {
     doc.text(`Patient: ${generatedPrescription.patientName}`, 14, y);
 
     y += 7;
+    doc.text(`Diagnosis: ${generatedPrescription.diagnosis || "N/A"}`, 14, y);
+
+    y += 7;
     doc.text(
-      `Date: ${new Date(generatedPrescription.createdAt).toLocaleDateString()}`,
+      `Date: ${formatDisplayDate(
+        generatedPrescription.prescriptionDate ||
+          generatedPrescription.createdAt ||
+          "",
+      )}`,
       14,
       y,
     );
@@ -108,7 +263,15 @@ const PrescriptionGenerator = ({ patientName }) => {
     doc.text("Medicines", 14, y);
 
     y += 8;
-    generatedPrescription.lines.forEach((line, index) => {
+    const linesToRender = Array.isArray(generatedPrescription.lines)
+      ? generatedPrescription.lines
+      : (generatedPrescription.medicines || []).map((medicine) => ({
+          medicine,
+          dosage: "As prescribed",
+          instructions: "Follow doctor instructions",
+        }));
+
+    linesToRender.forEach((line, index) => {
       const lineChunks = [
         `${index + 1}. ${line.medicine}`,
         `Dosage: ${line.dosage}`,
@@ -238,6 +401,25 @@ const PrescriptionGenerator = ({ patientName }) => {
           </Button>
 
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+            Diagnosis
+            <Input
+              type="text"
+              value={diagnosis}
+              onChange={(event) => setDiagnosis(event.target.value)}
+              placeholder="e.g. Viral fever"
+            />
+          </label>
+
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+            Prescription Date
+            <Input
+              type="date"
+              value={prescriptionDate}
+              onChange={(event) => setPrescriptionDate(event.target.value)}
+            />
+          </label>
+
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
             General Notes (optional)
             <textarea
               value={notes}
@@ -254,14 +436,40 @@ const PrescriptionGenerator = ({ patientName }) => {
             </p>
           )}
 
-          <Button type="submit" className="w-full md:w-auto">
-            Generate Preview
+          <Button
+            type="submit"
+            className="w-full md:w-auto"
+            loading={savingPrescription}
+            disabled={savingPrescription}
+          >
+            {savingPrescription ? "Saving Prescription..." : "Generate Preview"}
           </Button>
         </form>
       )}
 
       {generatedPrescription && (
         <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-md dark:border-slate-700 dark:bg-slate-900/70">
+          {prescriptionHistory.length > 1 ? (
+            <label className="mb-4 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+              View Prescription By Date
+              <select
+                value={selectedPrescriptionId}
+                onChange={(event) =>
+                  setSelectedPrescriptionId(event.target.value)
+                }
+                className="saas-input mt-1"
+              >
+                {prescriptionHistory.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {formatDisplayDate(
+                      item.prescriptionDate || item.generatedAt || item.savedAt,
+                    )}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3 dark:border-slate-700">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
@@ -272,12 +480,21 @@ const PrescriptionGenerator = ({ patientName }) => {
               </h4>
             </div>
             <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
-              Date: {generatedDate.toLocaleDateString()}
+              Date:{" "}
+              {formatDisplayDate(generatedPrescription.prescriptionDate) ||
+                generatedDate.toLocaleDateString()}
             </p>
           </div>
 
           <ul className="mt-4 space-y-3">
-            {generatedPrescription.lines.map((line, index) => (
+            {(Array.isArray(generatedPrescription.lines)
+              ? generatedPrescription.lines
+              : (generatedPrescription.medicines || []).map((medicine) => ({
+                  medicine,
+                  dosage: "",
+                  instructions: "",
+                }))
+            ).map((line, index) => (
               <li
                 key={`${line.medicine}-${index}`}
                 className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800/80"
@@ -285,13 +502,17 @@ const PrescriptionGenerator = ({ patientName }) => {
                 <p className="font-semibold text-slate-900 dark:text-white">
                   {index + 1}. {line.medicine}
                 </p>
-                <p className="mt-1 text-sm text-slate-700 dark:text-slate-200">
-                  <span className="font-semibold">Dosage:</span> {line.dosage}
-                </p>
-                <p className="mt-1 text-sm text-slate-700 dark:text-slate-200">
-                  <span className="font-semibold">Instructions:</span>{" "}
-                  {line.instructions}
-                </p>
+                {line.dosage ? (
+                  <p className="mt-1 text-sm text-slate-700 dark:text-slate-200">
+                    <span className="font-semibold">Dosage:</span> {line.dosage}
+                  </p>
+                ) : null}
+                {line.instructions ? (
+                  <p className="mt-1 text-sm text-slate-700 dark:text-slate-200">
+                    <span className="font-semibold">Instructions:</span>{" "}
+                    {line.instructions}
+                  </p>
+                ) : null}
               </li>
             ))}
           </ul>

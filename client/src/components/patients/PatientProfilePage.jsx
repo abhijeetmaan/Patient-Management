@@ -1,3 +1,6 @@
+import jsPDF from "jspdf";
+import { useState } from "react";
+import { useAuth } from "../../context/AuthContext";
 import Button from "../ui/Button";
 import Card from "../ui/Card";
 import PrescriptionGenerator from "./PrescriptionGenerator";
@@ -5,6 +8,7 @@ import VisitTimeline from "./VisitTimeline";
 import {
   Activity,
   ArrowLeft,
+  Download,
   Gauge,
   HeartPulse,
   Pill,
@@ -12,7 +16,40 @@ import {
   UserRound,
 } from "lucide-react";
 
-const PatientProfilePage = ({ patient, loading, onBack }) => {
+const formatDateLabel = (value) => {
+  if (!value) {
+    return "Unknown date";
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [year, month, day] = value.split("-");
+    return `${day}/${month}/${year}`;
+  }
+
+  const parsedDate = new Date(value);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return "Unknown date";
+  }
+
+  return parsedDate.toLocaleDateString();
+};
+
+const getLocalDateInputValue = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const PatientProfilePage = ({
+  patient,
+  loading,
+  onBack,
+  onPrescriptionSaved,
+}) => {
+  const { doctor } = useAuth();
+  const [downloadError, setDownloadError] = useState("");
+
   if (!patient) {
     return (
       <Card className="p-6 text-center">
@@ -32,21 +69,246 @@ const PatientProfilePage = ({ patient, loading, onBack }) => {
   }
 
   const visits = Array.isArray(patient.visits) ? patient.visits : [];
+  const savedPrescriptions = Array.isArray(patient.prescriptions)
+    ? patient.prescriptions
+    : [];
+  const medicinesByDate = [
+    ...savedPrescriptions
+      .map((prescription) => {
+        const medicines = Array.isArray(prescription.medicines)
+          ? prescription.medicines
+          : [];
+
+        if (medicines.length === 0) {
+          return null;
+        }
+
+        return {
+          key: `prescription-${prescription.id}`,
+          dateValue:
+            prescription.prescriptionDate ||
+            prescription.generatedAt ||
+            prescription.savedAt ||
+            "",
+          dateLabel: formatDateLabel(
+            prescription.prescriptionDate ||
+              prescription.generatedAt ||
+              prescription.savedAt ||
+              "",
+          ),
+          medicines,
+          sourceLabel: "Prescription",
+        };
+      })
+      .filter(Boolean),
+    ...visits
+      .map((visit, index) => {
+        const medicines = Array.isArray(visit.medicines) ? visit.medicines : [];
+
+        if (medicines.length === 0) {
+          return null;
+        }
+
+        return {
+          key: `visit-${index}`,
+          dateValue: visit.date || "",
+          dateLabel: formatDateLabel(visit.date || ""),
+          medicines,
+          sourceLabel: "Visit",
+        };
+      })
+      .filter(Boolean),
+  ].sort((a, b) => new Date(b.dateValue || 0) - new Date(a.dateValue || 0));
+
   const allMedicines = [
-    ...new Set(visits.flatMap((visit) => visit.medicines || [])),
+    ...new Set([
+      ...visits.flatMap((visit) => visit.medicines || []),
+      ...savedPrescriptions.flatMap((prescription) =>
+        Array.isArray(prescription.medicines) ? prescription.medicines : [],
+      ),
+    ]),
   ];
+  const latestVisit = visits[0] || null;
+  const diagnosis =
+    latestVisit?.diagnosis || patient.diagnosis || "Not specified";
+  const notes = latestVisit?.notes || patient.notes || "No additional notes";
+  const latestSavedPrescription =
+    [...savedPrescriptions].sort(
+      (a, b) =>
+        new Date(b.prescriptionDate || b.generatedAt || b.savedAt || 0) -
+        new Date(a.prescriptionDate || a.generatedAt || a.savedAt || 0),
+    )[0] || null;
+
+  const downloadPrescriptionPDF = async () => {
+    if (!patient?.id || !latestSavedPrescription) {
+      setDownloadError(
+        "Generate and save a prescription first, then download the PDF.",
+      );
+      return;
+    }
+
+    setDownloadError("");
+
+    const prescriptionMedicines = Array.isArray(
+      latestSavedPrescription.medicines,
+    )
+      ? latestSavedPrescription.medicines
+      : [];
+    const prescriptionDiagnosis =
+      latestSavedPrescription.diagnosis || diagnosis;
+    const prescriptionNotes = latestSavedPrescription.notes || notes;
+    const prescriptionDate =
+      latestSavedPrescription.prescriptionDate ||
+      getLocalDateInputValue(new Date());
+
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const marginX = 18;
+    let y = 18;
+
+    doc.setDrawColor(37, 99, 235);
+    doc.setLineWidth(0.9);
+    doc.roundedRect(10, 10, pageWidth - 20, pageHeight - 20, 3, 3);
+
+    doc.setFillColor(239, 246, 255);
+    doc.rect(11.5, 11.5, pageWidth - 23, 26, "F");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(17);
+    doc.setTextColor(30, 64, 175);
+    doc.text("Smart Care Clinic", marginX, y + 2);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10.5);
+    doc.setTextColor(71, 85, 105);
+    doc.text("Digitally generated patient prescription", marginX, y + 9);
+
+    doc.setLineWidth(0.3);
+    doc.setDrawColor(148, 163, 184);
+    doc.line(marginX, 42, pageWidth - marginX, 42);
+
+    y = 52;
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text("Patient Prescription", marginX, y);
+
+    y += 10;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11.5);
+    doc.setTextColor(30, 41, 59);
+    doc.text(`Name: ${patient.name}`, marginX, y);
+    y += 7;
+    doc.text(`Age: ${patient.age}`, marginX, y);
+    y += 7;
+    doc.text(`Gender: ${patient.gender}`, marginX, y);
+    y += 7;
+    doc.text(
+      `Date: ${formatDateLabel(prescriptionDate)}  Time: ${new Date(
+        latestSavedPrescription.generatedAt || Date.now(),
+      ).toLocaleTimeString()}`,
+      marginX,
+      y,
+    );
+
+    y += 12;
+    doc.setFont("helvetica", "bold");
+    doc.text("Diagnosis", marginX, y);
+    y += 6;
+    doc.setFont("helvetica", "normal");
+    const diagnosisLines = doc.splitTextToSize(
+      prescriptionDiagnosis,
+      pageWidth - marginX * 2,
+    );
+    doc.text(diagnosisLines, marginX, y);
+    y += diagnosisLines.length * 6 + 4;
+
+    doc.setFont("helvetica", "bold");
+    doc.text("Medicines", marginX, y);
+    y += 6;
+    doc.setFont("helvetica", "normal");
+
+    if (prescriptionMedicines.length === 0) {
+      doc.text("- No medicines prescribed", marginX + 3, y);
+      y += 7;
+    } else {
+      prescriptionMedicines.forEach((medicine) => {
+        const medicineLines = doc.splitTextToSize(
+          `- ${medicine}`,
+          pageWidth - marginX * 2 - 4,
+        );
+        doc.text(medicineLines, marginX + 3, y);
+        y += medicineLines.length * 6 + 1;
+      });
+    }
+
+    y += 3;
+    doc.setFont("helvetica", "bold");
+    doc.text("Notes", marginX, y);
+    y += 6;
+    doc.setFont("helvetica", "normal");
+    const noteLines = doc.splitTextToSize(
+      prescriptionNotes,
+      pageWidth - marginX * 2,
+    );
+    doc.text(noteLines, marginX, y);
+
+    const doctorName = doctor?.name || "Assigned Physician";
+    doc.setLineWidth(0.3);
+    doc.setDrawColor(203, 213, 225);
+    doc.line(marginX, pageHeight - 40, pageWidth - marginX, pageHeight - 40);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`Doctor: Dr. ${doctorName}`, marginX, pageHeight - 31);
+
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(9.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text(
+      "This is a digitally generated prescription",
+      marginX,
+      pageHeight - 20,
+    );
+
+    const safeName = (patient.name || "patient")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+    doc.save(`${safeName || "patient"}_prescription.pdf`);
+  };
+
   const vitals = getDummyVitals(patient);
 
   return (
     <div className="space-y-7">
-      <Button
-        variant="secondary"
-        className="inline-flex items-center gap-1.5 px-4 py-2 text-sm"
-        onClick={onBack}
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back
-      </Button>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          variant="secondary"
+          className="inline-flex items-center gap-1.5 px-4 py-2 text-sm"
+          onClick={onBack}
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back
+        </Button>
+
+        <Button
+          onClick={downloadPrescriptionPDF}
+          className="inline-flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-emerald-500/20 hover:-translate-y-0.5 hover:from-emerald-500 hover:to-teal-500 hover:shadow-lg hover:shadow-teal-500/25"
+        >
+          <Download className="h-4 w-4" />
+          Download Prescription PDF
+        </Button>
+      </div>
+
+      {downloadError ? (
+        <p className="text-sm font-medium text-red-600 dark:text-red-300">
+          {downloadError}
+        </p>
+      ) : null}
 
       <section className="grid gap-7 xl:grid-cols-[minmax(0,0.9fr),minmax(0,1.1fr)]">
         <div className="space-y-7">
@@ -97,22 +359,34 @@ const PatientProfilePage = ({ patient, loading, onBack }) => {
               Medicines
             </h3>
 
-            {allMedicines.length === 0 ? (
+            {medicinesByDate.length === 0 ? (
               <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm font-medium text-slate-500 transition-all duration-300 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-300">
                 No medicines recorded.
               </p>
             ) : (
-              <ul className="grid gap-2 sm:grid-cols-2">
-                {allMedicines.map((medicine) => (
-                  <li
-                    key={medicine}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition-all duration-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+              <div className="space-y-3">
+                {medicinesByDate.map((entry) => (
+                  <div
+                    key={entry.key}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-3 dark:border-slate-700 dark:bg-slate-800/80"
                   >
-                    <Pill className="h-4 w-4 text-brand-600 dark:text-brand-200" />
-                    {medicine}
-                  </li>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      {entry.sourceLabel} • {entry.dateLabel}
+                    </p>
+                    <ul className="grid gap-2 sm:grid-cols-2">
+                      {entry.medicines.map((medicine, index) => (
+                        <li
+                          key={`${entry.key}-${index}`}
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-200"
+                        >
+                          <Pill className="h-4 w-4 text-brand-600 dark:text-brand-200" />
+                          {medicine}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 ))}
-              </ul>
+              </div>
             )}
           </Card>
         </div>
@@ -125,7 +399,16 @@ const PatientProfilePage = ({ patient, loading, onBack }) => {
             <VisitTimeline visits={visits} loading={loading} />
           </Card>
 
-          <PrescriptionGenerator patientName={patient.name} />
+          <PrescriptionGenerator
+            patientId={patient.id}
+            patientName={patient.name}
+            latestDiagnosis={diagnosis}
+            doctorName={doctor?.name}
+            prescriptions={savedPrescriptions}
+            onPrescriptionSaved={(prescription) =>
+              onPrescriptionSaved?.(patient.id, prescription)
+            }
+          />
         </div>
       </section>
     </div>

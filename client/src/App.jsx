@@ -60,6 +60,7 @@ function App() {
     handleUpdatePatient,
     handleAddAppointment,
     handleMarkAppointmentCompleted,
+    handlePrescriptionSaved,
     clearPatientModals,
   } = usePatientManagement();
   const {
@@ -421,6 +422,7 @@ function App() {
           patient={selectedPatient}
           loading={loadingPatients}
           onBack={goBackToPatients}
+          onPrescriptionSaved={handlePrescriptionSaved}
         />
       );
     }

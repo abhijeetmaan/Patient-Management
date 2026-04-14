@@ -228,6 +228,42 @@ const usePatientManagement = () => {
     setEditingPatientId("");
   };
 
+  const handlePrescriptionSaved = (patientId, prescription) => {
+    if (!patientId || !prescription) {
+      return;
+    }
+
+    setPatients((previousPatients) =>
+      previousPatients.map((patient) => {
+        if (patient.id !== patientId) {
+          return patient;
+        }
+
+        const existingPrescriptions = Array.isArray(patient.prescriptions)
+          ? patient.prescriptions
+          : [];
+
+        const prescriptionDate = String(
+          prescription.prescriptionDate || "",
+        ).trim();
+
+        const mergedPrescriptions = prescriptionDate
+          ? [
+              prescription,
+              ...existingPrescriptions.filter(
+                (item) => item.prescriptionDate !== prescriptionDate,
+              ),
+            ]
+          : [prescription, ...existingPrescriptions];
+
+        return {
+          ...patient,
+          prescriptions: mergedPrescriptions,
+        };
+      }),
+    );
+  };
+
   const handleAddAppointment = async (appointmentData) => {
     try {
       setSavingAppointment(true);
@@ -337,6 +373,7 @@ const usePatientManagement = () => {
     handleUpdatePatient,
     handleAddAppointment,
     handleMarkAppointmentCompleted,
+    handlePrescriptionSaved,
     clearPatientModals,
   };
 };

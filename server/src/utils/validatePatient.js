@@ -63,8 +63,43 @@ const validateUpdatePatientPayload = (payload) => {
   return null;
 };
 
+const validatePrescriptionPayload = (payload) => {
+  if (!payload || typeof payload !== "object") {
+    return "Invalid prescription payload";
+  }
+
+  const diagnosis = String(payload.diagnosis || "").trim();
+  if (!diagnosis) {
+    return "diagnosis is required";
+  }
+
+  const prescriptionDate = String(payload.prescriptionDate || "").trim();
+  if (!prescriptionDate) {
+    return "prescriptionDate is required";
+  }
+
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+  if (!datePattern.test(prescriptionDate)) {
+    return "prescriptionDate must be in YYYY-MM-DD format";
+  }
+
+  const medicines = Array.isArray(payload.medicines)
+    ? payload.medicines
+    : String(payload.medicines || "")
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+  if (medicines.length === 0) {
+    return "at least one medicine is required";
+  }
+
+  return null;
+};
+
 module.exports = {
   validateCreatePatientPayload,
   validateVisitPayload,
   validateUpdatePatientPayload,
+  validatePrescriptionPayload,
 };
