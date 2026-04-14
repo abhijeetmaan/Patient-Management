@@ -130,10 +130,10 @@ const LoginPage = ({ onLogin, loading, errorMessage }) => {
               <Button
                 type="submit"
                 loading={loading}
-                className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white transition-all duration-300 hover:-translate-y-0.5 hover:from-blue-500 hover:to-indigo-500 hover:shadow-lg hover:shadow-indigo-500/30"
+                className="inline-flex w-full items-center justify-center gap-2 whitespace-nowrap bg-gradient-to-r from-blue-600 to-indigo-600 text-white transition-all duration-300 hover:-translate-y-0.5 hover:from-blue-500 hover:to-indigo-500 hover:shadow-lg hover:shadow-indigo-500/30"
               >
                 {loading ? "Signing in..." : "Login to Dashboard"}
-                {!loading && <ArrowRight className="ml-2 h-4 w-4" />}
+                {!loading && <ArrowRight className="h-4 w-4" />}
               </Button>
 
               <div className="rounded-xl border border-slate-200 bg-slate-50/90 px-4 py-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-300">
