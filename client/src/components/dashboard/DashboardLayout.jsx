@@ -292,7 +292,7 @@ const DashboardLayout = ({
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: -6, scale: 0.98 }}
                         transition={{ duration: 0.2, ease: "easeOut" }}
-                        className="absolute right-0 top-full z-[90] mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200 bg-white/95 shadow-2xl backdrop-blur-md dark:border-slate-700 dark:bg-slate-900/95"
+                        className="absolute left-0 right-0 top-full z-[90] mt-2 hidden overflow-hidden rounded-2xl border border-slate-200 bg-white/95 shadow-2xl backdrop-blur-md dark:border-slate-700 dark:bg-slate-900/95 lg:block lg:left-auto lg:right-0 lg:w-[min(20rem,calc(100vw-2rem))]"
                       >
                         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-slate-800">
                           <p className="text-sm font-semibold text-slate-800 dark:text-white">
@@ -410,6 +410,57 @@ const DashboardLayout = ({
                   </AnimatePresence>
                 </div>
               </div>
+
+              <AnimatePresence>
+                {showNotifications && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                    transition={{ duration: 0.2, ease: "easeOut" }}
+                    className="mt-1 w-full overflow-hidden rounded-2xl border border-slate-200 bg-white/95 shadow-2xl backdrop-blur-md dark:border-slate-700 dark:bg-slate-900/95 lg:hidden"
+                  >
+                    <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+                      <p className="text-sm font-semibold text-slate-800 dark:text-white">
+                        Notifications
+                      </p>
+                      {notificationCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={onClearNotifications}
+                          className="text-xs font-semibold text-slate-500 transition-colors hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                        >
+                          Clear all
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="max-h-72 overflow-y-auto p-2">
+                      {recentNotifications.length === 0 ? (
+                        <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-6 text-center text-xs font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-400">
+                          No new notifications.
+                        </p>
+                      ) : (
+                        <div className="space-y-2">
+                          {recentNotifications.map((item) => (
+                            <article
+                              key={item.id}
+                              className="rounded-xl border border-slate-100 bg-slate-50/90 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-800/80"
+                            >
+                              <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                                {item.message}
+                              </p>
+                              <p className="mt-1 text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                {formatNotificationTime(item.createdAt)}
+                              </p>
+                            </article>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </Card>
 
