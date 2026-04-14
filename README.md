@@ -24,7 +24,8 @@ A full-stack healthcare management platform designed for doctors to manage patie
 
 ## 📸 Screenshots
 
-(Add your screenshots here)
+![Login Page](./screenshots/Login.jpeg)
+![Login Page](./screenshots/DashBoard.jpeg)
 
 ## ⚡ Getting Started
 
