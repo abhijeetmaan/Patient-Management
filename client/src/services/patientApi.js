@@ -1,9 +1,13 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5001";
+// const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5001";
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL ||
+  "https://patient-management-1-g1i8.onrender.com";
 const DOCTOR_STORAGE_KEY = "pm-doctor";
 const AUTH_TOKEN_STORAGE_KEY = "pm-auth-token";
 
 const networkErrorMessage =
-  "Cannot connect to backend API. Make sure server is running on http://localhost:5001";
+  //   "Cannot connect to backend API. Make sure server is running on http://localhost:5001";
+  "Cannot connect to backend API. Make sure server is running on https://patient-management-1-g1i8.onrender.com";
 
 export class ApiAuthError extends Error {
   constructor(message) {
