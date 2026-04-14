@@ -531,7 +531,7 @@ function App() {
         </div>
       )}
 
-      <div className="pointer-events-none fixed right-5 top-5 z-50 flex w-[320px] flex-col gap-2">
+      <div className="pointer-events-none fixed left-3 right-3 top-3 z-50 flex flex-col gap-2 sm:left-auto sm:right-5 sm:top-5 sm:w-[320px]">
         <AnimatePresence>
           {toasts.map((toast) => (
             <motion.div

@@ -81,10 +81,10 @@ const CalendarView = ({
         </div>
 
         {loading ? (
-          <div className="h-[560px] animate-pulse rounded-2xl bg-slate-200/80 dark:bg-slate-800" />
+          <div className="h-[420px] animate-pulse rounded-2xl bg-slate-200/80 dark:bg-slate-800 sm:h-[500px] lg:h-[560px]" />
         ) : (
           <div
-            className={`calendar-shell h-[560px] ${theme === "dark" ? "calendar-dark" : ""}`}
+            className={`calendar-shell h-[420px] sm:h-[500px] lg:h-[560px] ${theme === "dark" ? "calendar-dark" : ""}`}
           >
             <Calendar
               localizer={localizer}

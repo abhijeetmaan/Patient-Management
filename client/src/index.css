@@ -158,3 +158,25 @@ body::before {
     align-items: stretch;
   }
 }
+
+@media (max-width: 640px) {
+  .calendar-shell .rbc-toolbar-label {
+    text-align: center;
+    font-size: 0.95rem;
+  }
+
+  .calendar-shell .rbc-toolbar button {
+    padding: 0.35rem 0.6rem;
+    font-size: 0.8rem;
+  }
+
+  .calendar-shell .rbc-header {
+    font-size: 0.72rem;
+    padding: 0.45rem 0.2rem;
+  }
+
+  .calendar-shell .rbc-date-cell {
+    font-size: 0.75rem;
+    padding-right: 0.2rem;
+  }
+}
