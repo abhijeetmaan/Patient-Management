@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import {
   ApiAuthError,
@@ -22,6 +22,57 @@ const useAdminPanel = (enabled) => {
   const [doctors, setDoctors] = useState([]);
   const [allPatients, setAllPatients] = useState([]);
   const [updatingDoctorId, setUpdatingDoctorId] = useState("");
+
+  const mergeRealtimePatient = useCallback(
+    (incomingPatient) => {
+      if (!enabled || !incomingPatient?.id) {
+        return;
+      }
+
+      const {
+        actorDoctorId: _actorDoctorId,
+        actorDoctorName: _actorDoctorName,
+        ...patientRecord
+      } = incomingPatient;
+
+      let didAddNewPatient = false;
+
+      setAllPatients((previousPatients) => {
+        const exists = previousPatients.some(
+          (patient) => String(patient.id) === String(patientRecord.id),
+        );
+
+        didAddNewPatient = !exists;
+
+        return exists
+          ? previousPatients.map((patient) =>
+              String(patient.id) === String(patientRecord.id)
+                ? patientRecord
+                : patient,
+            )
+          : [patientRecord, ...previousPatients];
+      });
+
+      if (didAddNewPatient) {
+        setStats((previousStats) => ({
+          ...previousStats,
+          totalPatients: previousStats.totalPatients + 1,
+        }));
+      }
+    },
+    [enabled],
+  );
+
+  const incrementAppointmentCount = useCallback(() => {
+    if (!enabled) {
+      return;
+    }
+
+    setStats((previousStats) => ({
+      ...previousStats,
+      totalAppointments: previousStats.totalAppointments + 1,
+    }));
+  }, [enabled]);
 
   useEffect(() => {
     if (!enabled) {
@@ -91,6 +142,8 @@ const useAdminPanel = (enabled) => {
     doctors,
     allPatients,
     updatingDoctorId,
+    mergeRealtimePatient,
+    incrementAppointmentCount,
     updateDoctorPermissions: async (doctorId, permissions) => {
       try {
         setUpdatingDoctorId(String(doctorId));

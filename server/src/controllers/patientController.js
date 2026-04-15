@@ -21,6 +21,69 @@ const {
   validateUpdatePatientPayload,
 } = require("../utils/validatePatient");
 
+const getDoctorRoom = (doctorId) => `doctor:${String(doctorId || "")}`;
+
+const emitToRoomExcludingDoctor = (
+  io,
+  room,
+  eventName,
+  payload,
+  doctorSocketIds,
+  doctorId,
+) => {
+  if (!room) {
+    return;
+  }
+
+  const socketIds = doctorSocketIds?.get(String(doctorId || "").trim());
+  const exclusionList = socketIds ? Array.from(socketIds) : [];
+
+  if (exclusionList.length > 0) {
+    io.to(room).except(exclusionList).emit(eventName, payload);
+    return;
+  }
+
+  io.to(room).emit(eventName, payload);
+};
+
+const getPatientSnapshot = (patient) => {
+  if (!patient) {
+    return null;
+  }
+
+  const assignedDoctor = getDoctorById(patient.doctorId);
+
+  return {
+    ...patient,
+    assignedDoctorName: assignedDoctor?.name || "Unknown Doctor",
+  };
+};
+
+const emitPatientEvent = (req, patient, eventName) => {
+  const io = req.app.get("io");
+  const doctorSocketIds = req.app.get("doctorSocketIds");
+  if (!io || !patient) {
+    return;
+  }
+
+  const snapshot = getPatientSnapshot(patient);
+  const payload = {
+    ...snapshot,
+    actorDoctorId: String(req.doctorId),
+    actorDoctorName: req.user?.name || "Doctor",
+  };
+
+  emitToRoomExcludingDoctor(
+    io,
+    getDoctorRoom(patient.doctorId),
+    eventName,
+    payload,
+    doctorSocketIds,
+    req.doctorId,
+  );
+  io.to("admins").emit(eventName, payload);
+};
+
 const toMedicinesArray = (medicines) => {
   if (Array.isArray(medicines)) {
     return medicines;
@@ -90,7 +153,9 @@ const createPatient = (req, res) => {
   };
 
   const createdPatient = addPatient(patient);
-  return res.status(201).json(createdPatient);
+  const createdSnapshot = getPatientSnapshot(createdPatient);
+  emitPatientEvent(req, createdPatient, "patient_added");
+  return res.status(201).json(createdSnapshot);
 };
 
 const listPatients = (_req, res) => {
@@ -162,7 +227,8 @@ const updatePatientProfile = (req, res) => {
     return res.status(404).json({ message: "Patient not found" });
   }
 
-  return res.status(200).json(updatedPatient);
+  emitPatientEvent(req, updatedPatient, "patient_updated");
+  return res.status(200).json(getPatientSnapshot(updatedPatient));
 };
 
 const removePatient = (req, res) => {
@@ -220,9 +286,11 @@ const savePrescription = (req, res) => {
     return res.status(404).json({ message: "Patient not found" });
   }
 
+  emitPatientEvent(req, updatedPatient, "patient_updated");
   return res.status(201).json({
     message: "Prescription saved successfully",
     prescription,
+    patient: getPatientSnapshot(updatedPatient),
   });
 };
 

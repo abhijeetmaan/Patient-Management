@@ -26,6 +26,7 @@ import { useAuth } from "./context/AuthContext";
 import useAdminPanel from "./hooks/useAdminPanel";
 import useBillingPlan from "./hooks/useBillingPlan";
 import usePatientManagement from "./hooks/usePatientManagement";
+import { socket } from "./socket";
 import {
   getDashboardStats,
   getPatientGrowthData,
@@ -52,6 +53,7 @@ function App() {
   const [toasts, setToasts] = useState([]);
   const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
   const [showEntryLoader, setShowEntryLoader] = useState(true);
+  const [liveUpdatesEnabled, setLiveUpdatesEnabled] = useState(false);
   const reminderTrackerRef = useRef(new Set());
   const {
     patients,
@@ -78,6 +80,8 @@ function App() {
     handleAddAppointment,
     handleMarkAppointmentCompleted,
     handlePrescriptionSaved,
+    mergeRealtimePatient,
+    mergeRealtimeAppointment,
     recordActivity,
     clearPatientModals,
   } = usePatientManagement();
@@ -88,6 +92,8 @@ function App() {
     doctors: adminDoctors,
     allPatients: adminPatients,
     updatingDoctorId,
+    mergeRealtimePatient: mergeAdminRealtimePatient,
+    incrementAppointmentCount,
     updateDoctorPermissions,
   } = useAdminPanel(isAdmin && activeView === "admin");
   const {
@@ -273,22 +279,6 @@ function App() {
     }
   }, []);
 
-  useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      setShowEntryLoader(false);
-    }, 1400);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, []);
-
-  useEffect(() => {
-    const isDark = theme === "dark";
-    document.documentElement.classList.toggle("dark", isDark);
-    localStorage.setItem("pm-theme", theme);
-  }, [theme]);
-
   const createNotification = useCallback((message) => {
     const id =
       typeof crypto !== "undefined" && crypto.randomUUID
@@ -304,6 +294,114 @@ function App() {
       setToasts((previous) => previous.filter((toast) => toast.id !== id));
     }, 2600);
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || !doctor?.id) {
+      socket.disconnect();
+      setLiveUpdatesEnabled(false);
+      return undefined;
+    }
+
+    socket.auth = {
+      doctorId: String(doctor.id),
+      role: doctor.role,
+    };
+
+    const handleConnect = () => {
+      setLiveUpdatesEnabled(true);
+    };
+
+    const handleDisconnect = () => {
+      setLiveUpdatesEnabled(false);
+    };
+
+    const shouldIgnoreToast = (payload) =>
+      String(payload?.actorDoctorId || "") === String(doctor.id);
+
+    const handlePatientAdded = (payload) => {
+      mergeRealtimePatient(payload);
+      mergeAdminRealtimePatient(payload);
+
+      if (!shouldIgnoreToast(payload)) {
+        createNotification("New patient added");
+      }
+    };
+
+    const handlePatientUpdated = (payload) => {
+      mergeRealtimePatient(payload);
+      mergeAdminRealtimePatient(payload);
+
+      if (!shouldIgnoreToast(payload)) {
+        createNotification("Patient updated");
+      }
+    };
+
+    const handleAppointmentCreated = (payload) => {
+      mergeRealtimeAppointment(payload);
+      incrementAppointmentCount();
+
+      if (!shouldIgnoreToast(payload)) {
+        createNotification("Appointment scheduled");
+      }
+    };
+
+    const handleAppointmentUpdated = (payload) => {
+      mergeRealtimeAppointment(payload);
+
+      if (!shouldIgnoreToast(payload)) {
+        createNotification("Appointment updated");
+      }
+    };
+
+    socket.on("connect", handleConnect);
+    socket.on("disconnect", handleDisconnect);
+    socket.on("patient_added", handlePatientAdded);
+    socket.on("patient_updated", handlePatientUpdated);
+    socket.on("appointment_created", handleAppointmentCreated);
+    socket.on("appointment_updated", handleAppointmentUpdated);
+
+    if (!socket.connected) {
+      socket.connect();
+    } else {
+      setLiveUpdatesEnabled(true);
+    }
+
+    return () => {
+      socket.off("connect", handleConnect);
+      socket.off("disconnect", handleDisconnect);
+      socket.off("patient_added", handlePatientAdded);
+      socket.off("patient_updated", handlePatientUpdated);
+      socket.off("appointment_created", handleAppointmentCreated);
+      socket.off("appointment_updated", handleAppointmentUpdated);
+      socket.disconnect();
+      setLiveUpdatesEnabled(false);
+    };
+  }, [
+    doctor?.id,
+    doctor?.role,
+    createNotification,
+    incrementAppointmentCount,
+    isAuthenticated,
+    mergeAdminRealtimePatient,
+    mergeRealtimeAppointment,
+    mergeRealtimePatient,
+  ]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setShowEntryLoader(false);
+    }, 1400);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, []);
+
+  useEffect(() => {
+    const isDark = theme === "dark";
+    document.documentElement.classList.toggle("dark", isDark);
+    localStorage.setItem("pm-theme", theme);
+  }, [theme]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -595,6 +693,7 @@ function App() {
       onClearNotifications={clearNotifications}
       onToggleTheme={toggleTheme}
       onOpenDoctorProfile={handleOpenDoctorProfile}
+      liveUpdatesEnabled={liveUpdatesEnabled}
     >
       {errorMessage && <div className="saas-status-danger">{errorMessage}</div>}
 

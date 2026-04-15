@@ -13,6 +13,68 @@ const {
   validateUpdateAppointmentStatusPayload,
 } = require("../utils/validateAppointment");
 
+const getDoctorRoom = (doctorId) => `doctor:${String(doctorId || "")}`;
+
+const emitToRoomExcludingDoctor = (
+  io,
+  room,
+  eventName,
+  payload,
+  doctorSocketIds,
+  doctorId,
+) => {
+  if (!room) {
+    return;
+  }
+
+  const socketIds = doctorSocketIds?.get(String(doctorId || "").trim());
+  const exclusionList = socketIds ? Array.from(socketIds) : [];
+
+  if (exclusionList.length > 0) {
+    io.to(room).except(exclusionList).emit(eventName, payload);
+    return;
+  }
+
+  io.to(room).emit(eventName, payload);
+};
+
+const getAppointmentSnapshot = (appointment) => {
+  if (!appointment) {
+    return null;
+  }
+
+  const assignedDoctor = getDoctorById(appointment.doctorId);
+
+  return {
+    ...appointment,
+    doctorName: assignedDoctor?.name || "Unknown Doctor",
+  };
+};
+
+const emitAppointmentEvent = (req, appointment, eventName) => {
+  const io = req.app.get("io");
+  const doctorSocketIds = req.app.get("doctorSocketIds");
+  if (!io || !appointment) {
+    return;
+  }
+
+  const payload = {
+    ...getAppointmentSnapshot(appointment),
+    actorDoctorId: String(req.doctorId),
+    actorDoctorName: req.user?.name || "Doctor",
+  };
+
+  emitToRoomExcludingDoctor(
+    io,
+    getDoctorRoom(appointment.doctorId),
+    eventName,
+    payload,
+    doctorSocketIds,
+    req.doctorId,
+  );
+  io.to("admins").emit(eventName, payload);
+};
+
 const createAppointment = (req, res) => {
   const validationError = validateCreateAppointmentPayload(req.body);
   if (validationError) {
@@ -41,7 +103,9 @@ const createAppointment = (req, res) => {
     createdAt: new Date(),
   };
 
-  return res.status(201).json(addAppointment(appointment));
+  const createdAppointment = addAppointment(appointment);
+  emitAppointmentEvent(req, createdAppointment, "appointment_created");
+  return res.status(201).json(getAppointmentSnapshot(createdAppointment));
 };
 
 const listAppointments = (req, res) => {
@@ -95,7 +159,8 @@ const updateAppointmentStatus = (req, res) => {
     return res.status(404).json({ message: "Appointment not found" });
   }
 
-  return res.status(200).json(updatedAppointment);
+  emitAppointmentEvent(req, updatedAppointment, "appointment_updated");
+  return res.status(200).json(getAppointmentSnapshot(updatedAppointment));
 };
 
 module.exports = {

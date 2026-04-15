@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import {
   ApiAuthError,
@@ -142,7 +142,19 @@ const usePatientManagement = () => {
       setErrorMessage("");
       setSuccessMessage("");
       const createdPatient = await createPatient(formData);
-      setPatients((previousPatients) => [createdPatient, ...previousPatients]);
+      setPatients((previousPatients) => {
+        const exists = previousPatients.some(
+          (patient) => String(patient.id) === String(createdPatient.id),
+        );
+
+        return exists
+          ? previousPatients.map((patient) =>
+              String(patient.id) === String(createdPatient.id)
+                ? createdPatient
+                : patient,
+            )
+          : [createdPatient, ...previousPatients];
+      });
       recordActivity(
         "patient_added",
         `${formatAuditUser(doctor?.name)} added patient ${createdPatient.name}`,
@@ -259,6 +271,63 @@ const usePatientManagement = () => {
     }
   };
 
+  const mergeRealtimePatient = useCallback((incomingPatient) => {
+    if (!incomingPatient?.id) {
+      return;
+    }
+
+    const {
+      actorDoctorId: _actorDoctorId,
+      actorDoctorName: _actorDoctorName,
+      ...patientRecord
+    } = incomingPatient;
+
+    setPatients((previousPatients) => {
+      const nextPatients = previousPatients.some(
+        (patient) => String(patient.id) === String(patientRecord.id),
+      )
+        ? previousPatients.map((patient) =>
+            String(patient.id) === String(patientRecord.id)
+              ? patientRecord
+              : patient,
+          )
+        : [patientRecord, ...previousPatients];
+
+      return nextPatients;
+    });
+  }, []);
+
+  const mergeRealtimeAppointment = useCallback((incomingAppointment) => {
+    if (!incomingAppointment?.id) {
+      return;
+    }
+
+    const {
+      actorDoctorId: _actorDoctorId,
+      actorDoctorName: _actorDoctorName,
+      ...appointmentRecord
+    } = incomingAppointment;
+
+    setAppointments((previousAppointments) => {
+      const nextAppointments = previousAppointments.some(
+        (appointment) =>
+          String(appointment.id) === String(appointmentRecord.id),
+      )
+        ? previousAppointments.map((appointment) =>
+            String(appointment.id) === String(appointmentRecord.id)
+              ? appointmentRecord
+              : appointment,
+          )
+        : [appointmentRecord, ...previousAppointments];
+
+      return nextAppointments.sort(
+        (a, b) =>
+          new Date(`${a.date}T${a.time}`).getTime() -
+          new Date(`${b.date}T${b.time}`).getTime(),
+      );
+    });
+  }, []);
+
   const clearPatientModals = () => {
     setSelectedPatientId("");
     setEditingPatientId("");
@@ -308,7 +377,17 @@ const usePatientManagement = () => {
 
       const createdAppointment = await createAppointment(appointmentData);
       setAppointments((previous) => {
-        const merged = [createdAppointment, ...previous];
+        const merged = previous.some(
+          (appointment) =>
+            String(appointment.id) === String(createdAppointment.id),
+        )
+          ? previous.map((appointment) =>
+              String(appointment.id) === String(createdAppointment.id)
+                ? createdAppointment
+                : appointment,
+            )
+          : [createdAppointment, ...previous];
+
         return merged.sort(
           (a, b) =>
             new Date(`${a.date}T${a.time}`).getTime() -
@@ -412,6 +491,8 @@ const usePatientManagement = () => {
     handleAddAppointment,
     handleMarkAppointmentCompleted,
     handlePrescriptionSaved,
+    mergeRealtimePatient,
+    mergeRealtimeAppointment,
     recordActivity,
     clearPatientModals,
   };
