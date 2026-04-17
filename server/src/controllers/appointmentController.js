@@ -15,6 +15,94 @@ const {
 
 const getDoctorRoom = (doctorId) => `doctor:${String(doctorId || "")}`;
 
+const getAppointmentSortWeight = (status) => {
+  const normalizedStatus = String(status || "pending").toLowerCase();
+
+  if (normalizedStatus === "in_cabin") {
+    return 0;
+  }
+
+  if (normalizedStatus === "pending") {
+    return 1;
+  }
+
+  if (normalizedStatus === "requeued") {
+    return 2;
+  }
+
+  if (normalizedStatus === "skipped") {
+    return 3;
+  }
+
+  return 4;
+};
+
+const getAppointmentSortTimestamp = (appointment) => {
+  const status = String(appointment?.status || "pending").toLowerCase();
+
+  if (status === "in_cabin" && appointment?.cabinStartTime) {
+    const timestamp = new Date(appointment.cabinStartTime).getTime();
+    if (!Number.isNaN(timestamp)) {
+      return timestamp;
+    }
+  }
+
+  if (status === "requeued" && appointment?.requeueTime) {
+    const timestamp = new Date(appointment.requeueTime).getTime();
+    if (!Number.isNaN(timestamp)) {
+      return timestamp;
+    }
+  }
+
+  const fallbackTimestamp = new Date(
+    `${appointment?.date}T${appointment?.time}`,
+  ).getTime();
+  return Number.isNaN(fallbackTimestamp) ? 0 : fallbackTimestamp;
+};
+
+const applyAppointmentLifecycleState = (current, status) => {
+  const normalizedStatus = String(status || "pending").trim();
+  const now = new Date().toISOString();
+
+  return {
+    ...current,
+    status: normalizedStatus,
+    cabinStartTime:
+      normalizedStatus === "in_cabin"
+        ? now
+        : normalizedStatus === "pending" ||
+            normalizedStatus === "skipped" ||
+            normalizedStatus === "requeued"
+          ? null
+          : current.cabinStartTime || null,
+    completedAt:
+      normalizedStatus === "completed"
+        ? now
+        : normalizedStatus === "pending" ||
+            normalizedStatus === "in_cabin" ||
+            normalizedStatus === "skipped" ||
+            normalizedStatus === "requeued"
+          ? null
+          : current.completedAt || null,
+    isLate:
+      normalizedStatus === "skipped" || normalizedStatus === "requeued"
+        ? true
+        : Boolean(current.isLate),
+    skippedAt:
+      normalizedStatus === "skipped"
+        ? now
+        : normalizedStatus === "pending" || normalizedStatus === "in_cabin"
+          ? null
+          : current.skippedAt || null,
+    requeueTime:
+      normalizedStatus === "requeued"
+        ? now
+        : normalizedStatus === "skipped"
+          ? null
+          : current.requeueTime || null,
+  };
+};
+
 const emitToRoomExcludingDoctor = (
   io,
   room,
@@ -100,6 +188,11 @@ const createAppointment = (req, res) => {
     date,
     time,
     status: "pending",
+    cabinStartTime: null,
+    completedAt: null,
+    isLate: false,
+    skippedAt: null,
+    requeueTime: null,
     createdAt: new Date(),
   };
 
@@ -124,9 +217,14 @@ const listAppointments = (req, res) => {
       };
     })
     .sort((a, b) => {
-      const aDate = new Date(`${a.date}T${a.time}`).getTime();
-      const bDate = new Date(`${b.date}T${b.time}`).getTime();
-      return aDate - bDate;
+      const statusDelta =
+        getAppointmentSortWeight(a.status) - getAppointmentSortWeight(b.status);
+
+      if (statusDelta !== 0) {
+        return statusDelta;
+      }
+
+      return getAppointmentSortTimestamp(a) - getAppointmentSortTimestamp(b);
     });
 
   return res.status(200).json(sortedAppointments);
@@ -140,26 +238,26 @@ const updateAppointmentStatus = (req, res) => {
 
   const status = String(req.body.status).trim();
   const isAdmin = String(req.user?.role || "").toLowerCase() === "admin";
+  const eventName =
+    status === "skipped"
+      ? "appointment_skipped"
+      : status === "requeued"
+        ? "appointment_requeued"
+        : "appointment_updated";
 
   const updatedAppointment = isAdmin
-    ? updateAppointmentById(req.params.id, (current) => ({
-        ...current,
-        status,
-      }))
-    : updateAppointmentByIdAndDoctorId(
-        req.params.id,
-        req.doctorId,
-        (current) => ({
-          ...current,
-          status,
-        }),
+    ? updateAppointmentById(req.params.id, (current) =>
+        applyAppointmentLifecycleState(current, status),
+      )
+    : updateAppointmentByIdAndDoctorId(req.params.id, req.doctorId, (current) =>
+        applyAppointmentLifecycleState(current, status),
       );
 
   if (!updatedAppointment) {
     return res.status(404).json({ message: "Appointment not found" });
   }
 
-  emitAppointmentEvent(req, updatedAppointment, "appointment_updated");
+  emitAppointmentEvent(req, updatedAppointment, eventName);
   return res.status(200).json(getAppointmentSnapshot(updatedAppointment));
 };
 

@@ -127,6 +127,29 @@ export const AuthProvider = ({ children }) => {
     setAuthError("");
   }, []);
 
+  const syncDoctorPermissions = useCallback((doctorId, permissions) => {
+    setSession((previousSession) => {
+      if (
+        !previousSession.doctor ||
+        String(previousSession.doctor.id) !== String(doctorId)
+      ) {
+        return previousSession;
+      }
+
+      const nextDoctor = normalizeDoctor({
+        ...previousSession.doctor,
+        permissions,
+      });
+
+      setStoredDoctor(nextDoctor);
+
+      return {
+        ...previousSession,
+        doctor: nextDoctor,
+      };
+    });
+  }, []);
+
   const value = useMemo(
     () => ({
       doctor,
@@ -138,6 +161,7 @@ export const AuthProvider = ({ children }) => {
       login,
       logout,
       clearAuthError,
+      syncDoctorPermissions,
       hasPermission: (permission) => {
         if (!doctor) {
           return false;
@@ -155,7 +179,16 @@ export const AuthProvider = ({ children }) => {
         return Boolean(permissions[permission]);
       },
     }),
-    [doctor, token, authLoading, authError, login, logout, clearAuthError],
+    [
+      doctor,
+      token,
+      authLoading,
+      authError,
+      login,
+      logout,
+      clearAuthError,
+      syncDoctorPermissions,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

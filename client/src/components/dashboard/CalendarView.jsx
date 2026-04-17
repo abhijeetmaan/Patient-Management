@@ -25,9 +25,22 @@ const CalendarView = ({
   focusedCalendarAppointment,
   theme,
   onMarkAppointmentCompleted,
+  onSendToCabin,
+  onSkipAppointment,
+  onRequeueAppointment,
+  nextPendingAppointmentId,
   onAddPatient,
 }) => {
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [nowTick, setNowTick] = useState(() => Date.now());
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setNowTick(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   const events = useMemo(() => {
     return (Array.isArray(appointments) ? appointments : [])
@@ -50,6 +63,11 @@ const CalendarView = ({
           patientId: appointment.patientId,
           date: appointment.date,
           time: appointment.time,
+          cabinStartTime: appointment.cabinStartTime || null,
+          completedAt: appointment.completedAt || null,
+          skippedAt: appointment.skippedAt || null,
+          requeueTime: appointment.requeueTime || null,
+          isLate: Boolean(appointment.isLate),
         };
       })
       .filter(Boolean);
@@ -119,7 +137,13 @@ const CalendarView = ({
                 className:
                   event.status === "completed"
                     ? "rounded-md border border-emerald-200 bg-gradient-to-r from-emerald-500 to-green-500 px-2 py-1 text-xs font-semibold text-white shadow-sm"
-                    : "rounded-md border border-amber-200 bg-gradient-to-r from-amber-500 to-yellow-500 px-2 py-1 text-xs font-semibold text-white shadow-sm",
+                    : event.status === "in_cabin"
+                      ? "rounded-md border border-blue-200 bg-gradient-to-r from-blue-500 to-cyan-500 px-2 py-1 text-xs font-semibold text-white shadow-sm"
+                      : event.status === "requeued"
+                        ? "rounded-md border border-amber-200 bg-gradient-to-r from-amber-500 to-orange-500 px-2 py-1 text-xs font-semibold text-white shadow-sm"
+                        : event.status === "skipped"
+                          ? "rounded-md border border-rose-200 bg-gradient-to-r from-rose-500 to-red-500 px-2 py-1 text-xs font-semibold text-white shadow-sm"
+                          : "rounded-md border border-amber-200 bg-gradient-to-r from-amber-500 to-yellow-500 px-2 py-1 text-xs font-semibold text-white shadow-sm",
               })}
             />
           </div>
@@ -160,34 +184,245 @@ const CalendarView = ({
               className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-bold uppercase tracking-wide ${
                 selectedEvent.status === "completed"
                   ? "border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"
-                  : "border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200"
+                  : selectedEvent.status === "in_cabin"
+                    ? "border-blue-200 bg-blue-100 text-blue-700 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-200"
+                    : selectedEvent.status === "requeued"
+                      ? "border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200"
+                      : selectedEvent.status === "skipped"
+                        ? "border-rose-200 bg-rose-100 text-rose-700 dark:border-rose-800 dark:bg-rose-900/30 dark:text-rose-200"
+                        : "border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200"
               }`}
             >
-              {selectedEvent.status === "completed" ? "Completed" : "Pending"}
+              {selectedEvent.status === "completed"
+                ? "Completed"
+                : selectedEvent.status === "in_cabin"
+                  ? "In Cabin"
+                  : selectedEvent.status === "requeued"
+                    ? "Late Arrival"
+                    : selectedEvent.status === "skipped"
+                      ? "Missed Appointment"
+                      : "Pending"}
             </span>
 
-            {selectedEvent.status !== "completed" && (
+            {selectedEvent.status === "in_cabin" && (
+              <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 dark:border-blue-800 dark:bg-blue-900/25 dark:text-blue-200">
+                In Cabin:{" "}
+                {formatElapsedTimer(
+                  getElapsedSeconds(selectedEvent.cabinStartTime, nowTick),
+                )}
+              </span>
+            )}
+
+            {selectedEvent.status === "pending" &&
+              String(selectedEvent.id) ===
+                String(nextPendingAppointmentId || "") && (
+                <Button
+                  variant="secondary"
+                  loading={updatingAppointmentId === selectedEvent.id}
+                  onClick={async () => {
+                    const updated = await onSendToCabin(selectedEvent.id);
+                    if (updated) {
+                      setSelectedEvent((previous) =>
+                        previous
+                          ? {
+                              ...previous,
+                              status: "in_cabin",
+                              cabinStartTime:
+                                updated.cabinStartTime ||
+                                new Date().toISOString(),
+                            }
+                          : previous,
+                      );
+                    }
+                  }}
+                  className="rounded-full border-blue-300 bg-blue-50 px-3 py-1.5 text-xs text-blue-700 hover:bg-blue-100 dark:border-blue-700 dark:bg-blue-900/20 dark:text-blue-200"
+                >
+                  {updatingAppointmentId === selectedEvent.id
+                    ? "Updating..."
+                    : "Send to Cabin"}
+                </Button>
+              )}
+
+            {selectedEvent.status === "skipped" && (
               <Button
                 variant="secondary"
                 loading={updatingAppointmentId === selectedEvent.id}
                 onClick={async () => {
-                  await onMarkAppointmentCompleted(selectedEvent.id);
-                  setSelectedEvent((previous) =>
-                    previous ? { ...previous, status: "completed" } : previous,
-                  );
+                  const updated = await onRequeueAppointment(selectedEvent.id);
+                  if (updated) {
+                    setSelectedEvent((previous) =>
+                      previous
+                        ? {
+                            ...previous,
+                            status: "requeued",
+                            requeueTime:
+                              updated.requeueTime || new Date().toISOString(),
+                            isLate: true,
+                          }
+                        : previous,
+                    );
+                  }
                 }}
-                className="rounded-full px-3 py-1.5 text-xs"
+                className="rounded-full border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200"
               >
                 {updatingAppointmentId === selectedEvent.id
                   ? "Updating..."
-                  : "Mark as Completed"}
+                  : "Re-add to Queue"}
               </Button>
             )}
+
+            {(selectedEvent.status === "pending" ||
+              selectedEvent.status === "in_cabin") && (
+              <Button
+                variant="secondary"
+                loading={updatingAppointmentId === selectedEvent.id}
+                onClick={async () => {
+                  await onSkipAppointment(selectedEvent.id);
+                  setSelectedEvent((previous) =>
+                    previous
+                      ? {
+                          ...previous,
+                          status: "skipped",
+                          isLate: true,
+                        }
+                      : previous,
+                  );
+                }}
+                className="rounded-full border-rose-300 bg-rose-50 px-3 py-1.5 text-xs text-rose-700 hover:bg-rose-100 dark:border-rose-700 dark:bg-rose-900/20 dark:text-rose-200"
+              >
+                {updatingAppointmentId === selectedEvent.id
+                  ? "Updating..."
+                  : "Skip Patient"}
+              </Button>
+            )}
+
+            {selectedEvent.status !== "completed" &&
+              selectedEvent.status !== "skipped" && (
+                <Button
+                  variant="secondary"
+                  loading={updatingAppointmentId === selectedEvent.id}
+                  onClick={async () => {
+                    const updated = await onMarkAppointmentCompleted(
+                      selectedEvent.id,
+                    );
+                    if (updated) {
+                      setSelectedEvent((previous) =>
+                        previous
+                          ? { ...previous, status: "completed" }
+                          : previous,
+                      );
+                    }
+                  }}
+                  className="rounded-full px-3 py-1.5 text-xs"
+                >
+                  {updatingAppointmentId === selectedEvent.id
+                    ? "Updating..."
+                    : "Mark as Completed"}
+                </Button>
+              )}
+          </div>
+
+          <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-700 dark:bg-slate-800/70">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+              Timeline
+            </p>
+            <div className="mt-3 space-y-3">
+              {buildAppointmentTimeline(selectedEvent).map((entry, index) => (
+                <div key={`${entry.label}-${index}`} className="flex gap-3">
+                  <div className="relative flex flex-col items-center">
+                    <span className={`h-3 w-3 rounded-full ${entry.tone}`} />
+                    {index <
+                    buildAppointmentTimeline(selectedEvent).length - 1 ? (
+                      <span className="mt-1 h-full w-px flex-1 bg-slate-200 dark:bg-slate-600" />
+                    ) : null}
+                  </div>
+                  <div className="-mt-1 flex-1 pb-1">
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                      {entry.time} → {entry.label}
+                    </p>
+                    {entry.meta ? (
+                      <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                        {entry.meta}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </Card>
       )}
     </div>
   );
+};
+
+const getElapsedSeconds = (cabinStartTime, nowTick) => {
+  if (!cabinStartTime) {
+    return 0;
+  }
+
+  const startTimestamp = new Date(cabinStartTime).getTime();
+
+  if (Number.isNaN(startTimestamp)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.floor((nowTick - startTimestamp) / 1000));
+};
+
+const formatElapsedTimer = (seconds) => {
+  const safeSeconds = Math.max(0, Math.floor(Number(seconds) || 0));
+  const minutesPart = Math.floor(safeSeconds / 60);
+  const secondsPart = safeSeconds % 60;
+
+  return `${String(minutesPart).padStart(2, "0")}:${String(secondsPart).padStart(2, "0")}`;
+};
+
+const buildAppointmentTimeline = (appointment) => {
+  if (!appointment) {
+    return [];
+  }
+
+  const timeline = [
+    {
+      time: formatTimelineTime(
+        appointment.start || `${appointment.date}T${appointment.time}`,
+      ),
+      label: "Appointment",
+      meta: "Scheduled consultation",
+      tone: "bg-blue-500",
+    },
+  ];
+
+  if (appointment.skippedAt) {
+    timeline.push({
+      time: formatTimelineTime(appointment.skippedAt),
+      label: "Skipped",
+      meta: "Missed appointment",
+      tone: "bg-rose-500",
+    });
+  }
+
+  if (appointment.requeueTime) {
+    timeline.push({
+      time: formatTimelineTime(appointment.requeueTime),
+      label: "Re-added",
+      meta: "Back in queue",
+      tone: "bg-amber-500",
+    });
+  }
+
+  return timeline;
+};
+
+const formatTimelineTime = (value) => {
+  const date = value instanceof Date ? value : new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "--:--";
+  }
+
+  return format(date, "HH:mm");
 };
 
 const DetailTile = ({ icon: Icon, label, value }) => {

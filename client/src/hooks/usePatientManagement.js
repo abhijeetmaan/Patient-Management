@@ -31,6 +31,82 @@ const usePatientManagement = () => {
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
+  const getAppointmentSortWeight = useCallback((status) => {
+    const normalizedStatus = String(status || "pending").toLowerCase();
+
+    if (normalizedStatus === "in_cabin") {
+      return 0;
+    }
+
+    if (normalizedStatus === "pending") {
+      return 1;
+    }
+
+    if (normalizedStatus === "requeued") {
+      return 2;
+    }
+
+    if (normalizedStatus === "skipped") {
+      return 3;
+    }
+
+    return 4;
+  }, []);
+
+  const getAppointmentSortTimestamp = useCallback((appointment) => {
+    const status = String(appointment?.status || "pending").toLowerCase();
+
+    if (status === "in_cabin" && appointment?.cabinStartTime) {
+      const timestamp = new Date(appointment.cabinStartTime).getTime();
+
+      if (!Number.isNaN(timestamp)) {
+        return timestamp;
+      }
+    }
+
+    if (status === "requeued" && appointment?.requeueTime) {
+      const timestamp = new Date(appointment.requeueTime).getTime();
+
+      if (!Number.isNaN(timestamp)) {
+        return timestamp;
+      }
+    }
+
+    const fallbackTimestamp = new Date(
+      `${appointment?.date}T${appointment?.time}`,
+    ).getTime();
+    return Number.isNaN(fallbackTimestamp) ? 0 : fallbackTimestamp;
+  }, []);
+
+  const sortAppointmentsByDateTime = useCallback(
+    (items) => {
+      return [...(Array.isArray(items) ? items : [])].sort((a, b) => {
+        const statusDelta =
+          getAppointmentSortWeight(a.status) -
+          getAppointmentSortWeight(b.status);
+
+        if (statusDelta !== 0) {
+          return statusDelta;
+        }
+
+        return getAppointmentSortTimestamp(a) - getAppointmentSortTimestamp(b);
+      });
+    },
+    [getAppointmentSortTimestamp, getAppointmentSortWeight],
+  );
+
+  const getNextPendingAppointmentId = useCallback(
+    (items) => {
+      const nextPending = sortAppointmentsByDateTime(items).find(
+        (appointment) =>
+          String(appointment?.status || "pending").toLowerCase() === "pending",
+      );
+
+      return nextPending?.id || "";
+    },
+    [sortAppointmentsByDateTime],
+  );
+
   const handleUnauthorized = (error) => {
     if (!(error instanceof ApiAuthError)) {
       return false;
@@ -113,7 +189,7 @@ const usePatientManagement = () => {
       setLoadingAppointments(true);
       setErrorMessage("");
       const appointmentList = await fetchAppointments();
-      setAppointments(appointmentList);
+      setAppointments(sortAppointmentsByDateTime(appointmentList));
     } catch (error) {
       if (handleUnauthorized(error)) {
         return;
@@ -134,7 +210,7 @@ const usePatientManagement = () => {
     setAppointments([]);
     setLoadingAppointments(true);
     loadAppointments();
-  }, [isAuthenticated, doctor?.id]);
+  }, [doctor?.id, isAuthenticated, sortAppointmentsByDateTime]);
 
   const handleAddPatient = async (formData) => {
     try {
@@ -297,36 +373,40 @@ const usePatientManagement = () => {
     });
   }, []);
 
-  const mergeRealtimeAppointment = useCallback((incomingAppointment) => {
-    if (!incomingAppointment?.id) {
-      return;
-    }
+  const mergeRealtimeAppointment = useCallback(
+    (incomingAppointment) => {
+      if (!incomingAppointment?.id) {
+        return;
+      }
 
-    const {
-      actorDoctorId: _actorDoctorId,
-      actorDoctorName: _actorDoctorName,
-      ...appointmentRecord
-    } = incomingAppointment;
+      const {
+        actorDoctorId: _actorDoctorId,
+        actorDoctorName: _actorDoctorName,
+        ...appointmentRecord
+      } = incomingAppointment;
 
-    setAppointments((previousAppointments) => {
-      const nextAppointments = previousAppointments.some(
-        (appointment) =>
-          String(appointment.id) === String(appointmentRecord.id),
-      )
-        ? previousAppointments.map((appointment) =>
-            String(appointment.id) === String(appointmentRecord.id)
-              ? appointmentRecord
-              : appointment,
-          )
-        : [appointmentRecord, ...previousAppointments];
+      setAppointments((previousAppointments) => {
+        const nextAppointments = previousAppointments.some(
+          (appointment) =>
+            String(appointment.id) === String(appointmentRecord.id),
+        )
+          ? previousAppointments.map((appointment) =>
+              String(appointment.id) === String(appointmentRecord.id)
+                ? appointmentRecord
+                : appointment,
+            )
+          : [appointmentRecord, ...previousAppointments];
 
-      return nextAppointments.sort(
-        (a, b) =>
-          new Date(`${a.date}T${a.time}`).getTime() -
-          new Date(`${b.date}T${b.time}`).getTime(),
-      );
-    });
-  }, []);
+        return nextAppointments.sort(
+          (a, b) =>
+            getAppointmentSortWeight(a.status) -
+              getAppointmentSortWeight(b.status) ||
+            getAppointmentSortTimestamp(a) - getAppointmentSortTimestamp(b),
+        );
+      });
+    },
+    [getAppointmentSortTimestamp, getAppointmentSortWeight],
+  );
 
   const clearPatientModals = () => {
     setSelectedPatientId("");
@@ -388,11 +468,7 @@ const usePatientManagement = () => {
             )
           : [createdAppointment, ...previous];
 
-        return merged.sort(
-          (a, b) =>
-            new Date(`${a.date}T${a.time}`).getTime() -
-            new Date(`${b.date}T${b.time}`).getTime(),
-        );
+        return sortAppointmentsByDateTime(merged);
       });
       recordActivity(
         "appointment_scheduled",
@@ -424,8 +500,10 @@ const usePatientManagement = () => {
       );
 
       setAppointments((previous) =>
-        previous.map((appointment) =>
-          appointment.id === appointmentId ? updatedAppointment : appointment,
+        sortAppointmentsByDateTime(
+          previous.map((appointment) =>
+            appointment.id === appointmentId ? updatedAppointment : appointment,
+          ),
         ),
       );
       recordActivity(
@@ -453,6 +531,125 @@ const usePatientManagement = () => {
       setUpdatingAppointmentId("");
     }
   };
+
+  const handleSkipAppointment = async (appointmentId) => {
+    try {
+      setUpdatingAppointmentId(appointmentId);
+      setErrorMessage("");
+      setSuccessMessage("");
+
+      const updatedAppointment = await updateAppointmentStatus(
+        appointmentId,
+        "skipped",
+      );
+
+      setAppointments((previous) =>
+        sortAppointmentsByDateTime(
+          previous.map((appointment) =>
+            appointment.id === appointmentId ? updatedAppointment : appointment,
+          ),
+        ),
+      );
+
+      recordActivity(
+        "appointment_skipped",
+        `${formatAuditUser(doctor?.name)} skipped ${updatedAppointment.patientName}`,
+        doctor?.name,
+      );
+      setSuccessMessage("Patient skipped.");
+      return updatedAppointment;
+    } catch (error) {
+      if (handleUnauthorized(error)) {
+        return null;
+      }
+
+      setErrorMessage(error.message || "Failed to skip patient.");
+      throw error;
+    } finally {
+      setUpdatingAppointmentId("");
+    }
+  };
+
+  const handleRequeueAppointment = async (appointmentId) => {
+    try {
+      setUpdatingAppointmentId(appointmentId);
+      setErrorMessage("");
+      setSuccessMessage("");
+
+      const updatedAppointment = await updateAppointmentStatus(
+        appointmentId,
+        "requeued",
+      );
+
+      setAppointments((previous) =>
+        sortAppointmentsByDateTime(
+          previous.map((appointment) =>
+            appointment.id === appointmentId ? updatedAppointment : appointment,
+          ),
+        ),
+      );
+
+      recordActivity(
+        "appointment_requeued",
+        `${formatAuditUser(doctor?.name)} re-added ${updatedAppointment.patientName} to the queue`,
+        doctor?.name,
+      );
+      setSuccessMessage("Patient re-added to queue.");
+      return updatedAppointment;
+    } catch (error) {
+      if (handleUnauthorized(error)) {
+        return null;
+      }
+
+      setErrorMessage(error.message || "Failed to re-add patient to queue.");
+      throw error;
+    } finally {
+      setUpdatingAppointmentId("");
+    }
+  };
+
+  const handleSendAppointmentToCabin = async (appointmentId) => {
+    try {
+      setUpdatingAppointmentId(appointmentId);
+      setErrorMessage("");
+      setSuccessMessage("");
+
+      const updatedAppointment = await updateAppointmentStatus(
+        appointmentId,
+        "in_cabin",
+      );
+
+      setAppointments((previous) =>
+        sortAppointmentsByDateTime(
+          previous.map((appointment) =>
+            appointment.id === appointmentId ? updatedAppointment : appointment,
+          ),
+        ),
+      );
+
+      recordActivity(
+        "status_updated",
+        `${formatAuditUser(doctor?.name)} sent ${updatedAppointment.patientName} to cabin`,
+        doctor?.name,
+      );
+      setSuccessMessage(`${updatedAppointment.patientName} is now in cabin.`);
+      return updatedAppointment;
+    } catch (error) {
+      if (handleUnauthorized(error)) {
+        return null;
+      }
+
+      setErrorMessage(error.message || "Failed to send patient to cabin.");
+      throw error;
+    } finally {
+      setUpdatingAppointmentId("");
+    }
+  };
+
+  const nextPendingAppointmentId = useMemo(
+    () => getNextPendingAppointmentId(appointments),
+    [appointments, getNextPendingAppointmentId],
+  );
 
   const selectedPatient = useMemo(
     () => patients.find((patient) => patient.id === selectedPatientId) || null,
@@ -490,6 +687,10 @@ const usePatientManagement = () => {
     handleUpdatePatient,
     handleAddAppointment,
     handleMarkAppointmentCompleted,
+    handleSendAppointmentToCabin,
+    handleSkipAppointment,
+    handleRequeueAppointment,
+    nextPendingAppointmentId,
     handlePrescriptionSaved,
     mergeRealtimePatient,
     mergeRealtimeAppointment,

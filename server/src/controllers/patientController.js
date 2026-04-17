@@ -109,6 +109,12 @@ const createVisitObject = ({
   notes: String(notes || "").trim(),
 });
 
+const canManageAllPatients = (req) => {
+  return (
+    req.user?.role === "admin" || hasPermission(req.user, "view_all_patients")
+  );
+};
+
 const createPrescriptionObject = ({
   diagnosis,
   medicines,
@@ -193,10 +199,9 @@ const addPatientVisit = (req, res) => {
     ],
   });
 
-  const updatedPatient =
-    req.user?.role === "admin"
-      ? updatePatientById(req.params.id, updater)
-      : updatePatientByIdAndDoctorId(req.params.id, req.doctorId, updater);
+  const updatedPatient = canManageAllPatients(req)
+    ? updatePatientById(req.params.id, updater)
+    : updatePatientByIdAndDoctorId(req.params.id, req.doctorId, updater);
 
   if (!updatedPatient) {
     return res.status(404).json({ message: "Patient not found" });
@@ -218,10 +223,9 @@ const updatePatientProfile = (req, res) => {
     gender: String(req.body.gender).trim(),
   });
 
-  const updatedPatient =
-    req.user?.role === "admin"
-      ? updatePatientById(req.params.id, updater)
-      : updatePatientByIdAndDoctorId(req.params.id, req.doctorId, updater);
+  const updatedPatient = canManageAllPatients(req)
+    ? updatePatientById(req.params.id, updater)
+    : updatePatientByIdAndDoctorId(req.params.id, req.doctorId, updater);
 
   if (!updatedPatient) {
     return res.status(404).json({ message: "Patient not found" });
@@ -232,16 +236,17 @@ const updatePatientProfile = (req, res) => {
 };
 
 const removePatient = (req, res) => {
-  const wasDeleted =
-    req.user?.role === "admin"
-      ? deletePatient(req.params.id)
-      : deletePatientByIdAndDoctorId(req.params.id, req.doctorId);
+  const canManageAll = canManageAllPatients(req);
+
+  const wasDeleted = canManageAll
+    ? deletePatient(req.params.id)
+    : deletePatientByIdAndDoctorId(req.params.id, req.doctorId);
 
   if (!wasDeleted) {
     return res.status(404).json({ message: "Patient not found" });
   }
 
-  if (req.user?.role === "admin") {
+  if (canManageAll) {
     deleteAppointmentsByPatientId(req.params.id);
   } else {
     deleteAppointmentsByPatientIdAndDoctorId(req.params.id, req.doctorId);
@@ -277,10 +282,9 @@ const savePrescription = (req, res) => {
     };
   };
 
-  const updatedPatient =
-    req.user?.role === "admin"
-      ? updatePatientById(req.params.id, updater)
-      : updatePatientByIdAndDoctorId(req.params.id, req.doctorId, updater);
+  const updatedPatient = canManageAllPatients(req)
+    ? updatePatientById(req.params.id, updater)
+    : updatePatientByIdAndDoctorId(req.params.id, req.doctorId, updater);
 
   if (!updatedPatient) {
     return res.status(404).json({ message: "Patient not found" });

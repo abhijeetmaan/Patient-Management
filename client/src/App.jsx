@@ -7,9 +7,11 @@ import {
   useState,
 } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { useLocation, useNavigate } from "react-router-dom";
 import LoginPage from "./components/auth/LoginPage";
 import {
   AdminDashboard,
+  AppointmentsPage,
   CalendarView,
   DashboardLayout,
   DashboardOverview,
@@ -34,6 +36,66 @@ import {
   getVisitsPerDayData,
 } from "./utils/dashboardMetrics";
 
+const resolveActiveViewFromPath = (pathname) => {
+  const normalizedPath = String(pathname || "/");
+
+  if (normalizedPath.startsWith("/appointments")) {
+    return "appointments";
+  }
+
+  if (normalizedPath.startsWith("/calendar")) {
+    return "calendar";
+  }
+
+  if (normalizedPath.startsWith("/pricing")) {
+    return "pricing";
+  }
+
+  if (normalizedPath.startsWith("/admin")) {
+    return "admin";
+  }
+
+  if (normalizedPath.startsWith("/patients/profile")) {
+    return "profile";
+  }
+
+  if (normalizedPath.startsWith("/patients")) {
+    return "patients";
+  }
+
+  return "dashboard";
+};
+
+const resolvePathForView = (view) => {
+  const normalizedView = String(view || "dashboard");
+
+  if (normalizedView === "appointments") {
+    return "/appointments";
+  }
+
+  if (normalizedView === "patients") {
+    return "/patients";
+  }
+
+  if (normalizedView === "calendar") {
+    return "/calendar";
+  }
+
+  if (normalizedView === "pricing") {
+    return "/pricing";
+  }
+
+  if (normalizedView === "admin") {
+    return "/admin";
+  }
+
+  if (normalizedView === "profile") {
+    return "/patients/profile";
+  }
+
+  return "/";
+};
+
 function App() {
   const {
     doctor,
@@ -41,10 +103,22 @@ function App() {
     authLoading,
     authError,
     login,
+    syncDoctorPermissions,
     hasPermission,
   } = useAuth();
   const isAdmin = doctor?.role === "admin";
-  const [activeView, setActiveView] = useState("dashboard");
+  const location = useLocation();
+  const navigate = useNavigate();
+  const activeView = useMemo(
+    () => resolveActiveViewFromPath(location.pathname),
+    [location.pathname],
+  );
+  const setActiveView = useCallback(
+    (nextView) => {
+      navigate(resolvePathForView(nextView));
+    },
+    [navigate],
+  );
   const [theme, setTheme] = useState("light");
   const [searchQuery, setSearchQuery] = useState("");
   const [focusedCalendarAppointment, setFocusedCalendarAppointment] =
@@ -79,6 +153,10 @@ function App() {
     handleUpdatePatient,
     handleAddAppointment,
     handleMarkAppointmentCompleted,
+    handleSendAppointmentToCabin,
+    handleSkipAppointment,
+    handleRequeueAppointment,
+    nextPendingAppointmentId,
     handlePrescriptionSaved,
     mergeRealtimePatient,
     mergeRealtimeAppointment,
@@ -353,12 +431,40 @@ function App() {
       }
     };
 
+    const handleAppointmentSkipped = (payload) => {
+      mergeRealtimeAppointment(payload);
+
+      if (!shouldIgnoreToast(payload)) {
+        createNotification("Patient skipped");
+      }
+    };
+
+    const handleAppointmentRequeued = (payload) => {
+      mergeRealtimeAppointment(payload);
+
+      if (!shouldIgnoreToast(payload)) {
+        createNotification("Patient re-added to queue");
+      }
+    };
+
+    const handleDoctorPermissionsUpdated = (payload) => {
+      if (String(payload?.doctorId || "") !== String(doctor.id)) {
+        return;
+      }
+
+      syncDoctorPermissions(payload.doctorId, payload.permissions);
+      createNotification("Your permissions were updated by admin");
+    };
+
     socket.on("connect", handleConnect);
     socket.on("disconnect", handleDisconnect);
     socket.on("patient_added", handlePatientAdded);
     socket.on("patient_updated", handlePatientUpdated);
     socket.on("appointment_created", handleAppointmentCreated);
     socket.on("appointment_updated", handleAppointmentUpdated);
+    socket.on("appointment_skipped", handleAppointmentSkipped);
+    socket.on("appointment_requeued", handleAppointmentRequeued);
+    socket.on("doctor_permissions_updated", handleDoctorPermissionsUpdated);
 
     if (!socket.connected) {
       socket.connect();
@@ -373,6 +479,9 @@ function App() {
       socket.off("patient_updated", handlePatientUpdated);
       socket.off("appointment_created", handleAppointmentCreated);
       socket.off("appointment_updated", handleAppointmentUpdated);
+      socket.off("appointment_skipped", handleAppointmentSkipped);
+      socket.off("appointment_requeued", handleAppointmentRequeued);
+      socket.off("doctor_permissions_updated", handleDoctorPermissionsUpdated);
       socket.disconnect();
       setLiveUpdatesEnabled(false);
     };
@@ -385,6 +494,7 @@ function App() {
     mergeAdminRealtimePatient,
     mergeRealtimeAppointment,
     mergeRealtimePatient,
+    syncDoctorPermissions,
   ]);
 
   useEffect(() => {
@@ -561,6 +671,31 @@ function App() {
     }
   };
 
+  const handleSendToCabinWithNotification = async (appointmentId) => {
+    const updatedAppointment =
+      await handleSendAppointmentToCabin(appointmentId);
+
+    if (updatedAppointment) {
+      createNotification(`${updatedAppointment.patientName} sent to cabin`);
+    }
+  };
+
+  const handleSkipAppointmentWithNotification = async (appointmentId) => {
+    const updatedAppointment = await handleSkipAppointment(appointmentId);
+
+    if (updatedAppointment) {
+      createNotification("Patient skipped");
+    }
+  };
+
+  const handleRequeueAppointmentWithNotification = async (appointmentId) => {
+    const updatedAppointment = await handleRequeueAppointment(appointmentId);
+
+    if (updatedAppointment) {
+      createNotification("Patient re-added to queue");
+    }
+  };
+
   const renderActiveView = () => {
     if (activeView === "admin") {
       if (!isAdmin) {
@@ -596,29 +731,39 @@ function App() {
       );
     }
 
+    if (activeView === "appointments") {
+      return (
+        <AppointmentsPage
+          appointments={appointments}
+          patients={patients}
+          loading={loadingAppointments}
+          schedulingAppointment={savingAppointment}
+          updatingAppointmentId={updatingAppointmentId}
+          theme={theme}
+          onAddAppointment={handleAddAppointmentWithNotification}
+          onMarkAppointmentCompleted={
+            handleMarkAppointmentCompletedWithNotification
+          }
+          onSendToCabin={handleSendToCabinWithNotification}
+          onSkipAppointment={handleSkipAppointmentWithNotification}
+          onRequeueAppointment={handleRequeueAppointmentWithNotification}
+          nextPendingAppointmentId={nextPendingAppointmentId}
+          onAddPatient={handleAddPatientCta}
+        />
+      );
+    }
+
     if (activeView === "dashboard") {
       return (
         <DashboardOverview
           stats={dashboardStats}
           activityLog={activityLog}
           activities={visitActivities.slice(0, 6)}
-          appointments={appointments}
-          patients={patients}
           doctorName={doctor?.name}
           visitsPerDayData={visitsPerDayData}
           patientGrowthData={patientGrowthData}
           loading={loadingPatients || loadingAppointments}
-          schedulingAppointment={savingAppointment}
-          updatingAppointmentId={updatingAppointmentId}
           theme={theme}
-          searchQuery={searchQuery}
-          searchResults={searchResults}
-          onSearchQueryChange={handleSearchQueryChange}
-          onSearchResultSelect={handleSearchResultSelect}
-          onAddAppointment={handleAddAppointmentWithNotification}
-          onMarkAppointmentCompleted={
-            handleMarkAppointmentCompletedWithNotification
-          }
           onOpenPatients={() => changeActiveView("patients")}
           onAddPatient={handleAddPatientCta}
         />
@@ -636,6 +781,10 @@ function App() {
           onMarkAppointmentCompleted={
             handleMarkAppointmentCompletedWithNotification
           }
+          onSendToCabin={handleSendToCabinWithNotification}
+          onSkipAppointment={handleSkipAppointmentWithNotification}
+          onRequeueAppointment={handleRequeueAppointmentWithNotification}
+          nextPendingAppointmentId={nextPendingAppointmentId}
           onAddPatient={handleAddPatientCta}
         />
       );

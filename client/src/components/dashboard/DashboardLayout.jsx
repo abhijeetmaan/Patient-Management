@@ -90,6 +90,7 @@ const DashboardLayout = ({
 
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { id: "appointments", label: "Appointments", icon: CalendarClock },
     { id: "patients", label: "Patients", icon: Users },
     { id: "calendar", label: "Calendar", icon: CalendarDays },
     { id: "pricing", label: "Pricing", icon: BadgeIndianRupee },
@@ -168,15 +169,17 @@ const DashboardLayout = ({
                 <h2 className="saas-gradient-title font-['Sora'] text-2xl font-bold sm:text-3xl md:text-[2rem]">
                   {activeView === "dashboard"
                     ? "Dashboard"
-                    : activeView === "calendar"
-                      ? "Calendar"
-                      : activeView === "pricing"
-                        ? "Pricing"
-                        : activeView === "admin"
-                          ? "Admin Panel"
-                          : activeView === "profile"
-                            ? "Patient Profile"
-                            : "Patients"}
+                    : activeView === "appointments"
+                      ? "Appointments"
+                      : activeView === "calendar"
+                        ? "Calendar"
+                        : activeView === "pricing"
+                          ? "Pricing"
+                          : activeView === "admin"
+                            ? "Admin Panel"
+                            : activeView === "profile"
+                              ? "Patient Profile"
+                              : "Patients"}
                 </h2>
                 {liveUpdatesEnabled ? (
                   <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200">

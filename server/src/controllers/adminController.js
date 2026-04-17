@@ -6,6 +6,8 @@ const {
 const { getPatients } = require("../data/patientsStore");
 const { getAppointments } = require("../data/appointmentsStore");
 
+const getDoctorRoom = (doctorId) => `doctor:${String(doctorId || "")}`;
+
 const listAllDoctors = (_req, res) => {
   const doctors = getDoctors().map((doctor) => sanitizeDoctor(doctor));
   return res.status(200).json(doctors);
@@ -33,7 +35,21 @@ const updateDoctorPermissionsById = (req, res) => {
     return res.status(404).json({ message: "Doctor not found." });
   }
 
-  return res.status(200).json(sanitizeDoctor(updatedDoctor));
+  const safeDoctor = sanitizeDoctor(updatedDoctor);
+  const io = req.app.get("io");
+
+  if (io) {
+    io.to(getDoctorRoom(updatedDoctor.id)).emit("doctor_permissions_updated", {
+      doctorId: String(updatedDoctor.id),
+      permissions: safeDoctor.permissions,
+    });
+    io.to("admins").emit("doctor_permissions_updated", {
+      doctorId: String(updatedDoctor.id),
+      permissions: safeDoctor.permissions,
+    });
+  }
+
+  return res.status(200).json(safeDoctor);
 };
 
 module.exports = {

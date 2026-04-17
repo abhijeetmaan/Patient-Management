@@ -27,8 +27,12 @@ const validateCreateAppointmentPayload = (payload = {}) => {
 
 const validateUpdateAppointmentStatusPayload = (payload = {}) => {
   const status = String(payload.status || "").trim();
-  if (!["pending", "completed"].includes(status)) {
-    return "Status must be either pending or completed.";
+  if (
+    !["pending", "in_cabin", "completed", "skipped", "requeued"].includes(
+      status,
+    )
+  ) {
+    return "Status must be pending, in_cabin, completed, skipped, or requeued.";
   }
 
   return "";
